@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import psycopg2
+import json
 
 # --- PARAMÈTRES DE CONNEXION NEON ---
 conn = psycopg2.connect(
@@ -13,12 +14,11 @@ conn = psycopg2.connect(
     sslmode="require"
 )
 
-
+# --- FONCTION POUR CHARGER LES DATES VALABLES ---
 def get_valid_dates(conn):
     df_dates = pd.read_sql("SELECT DISTINCT date FROM data_fibre ORDER BY date", conn)
     valid_dates = []
 
-    # Récupérer une seule fois les points XYZ
     df_xyz = pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
     n_points = len(df_xyz)
 
@@ -27,28 +27,30 @@ def get_valid_dates(conn):
         df_values_raw = pd.read_sql(query, conn, params=[date])
         if len(df_values_raw) == 0:
             continue
+
         values = df_values_raw["values"][0]
+        if isinstance(values, str):
+            try:
+                values = json.loads(values)
+            except:
+                continue
+
         if len(values) == n_points:
             valid_dates.append(date)
 
     return valid_dates
 
+# --- CONFIG STREAMLIT ---
 st.set_page_config(layout="wide")
-
-# --- TITRE ---
 st.title("📊 XYZ Data – Colorisation dynamique par données temporelles")
 
-# --- RECHARGER LES DATES ---
+# --- BOUTON DE RECHARGEMENT ---
 if st.button("🔄 Recharger les dates disponibles"):
     st.rerun()
 
-# --- RÉCUPÉRER LES DATES DISPONIBLES ---
-df_valid_dates = pd.read_sql("SELECT DISTINCT date FROM data_fibre ORDER BY date", conn)
-
-
+# --- CHARGER LES DATES DISPONIBLES ---
 dates = get_valid_dates(conn)
 st.success(f"✅ {len(dates)} dates valides chargées.")
-
 
 if len(dates) == 0:
     st.error("❌ Aucune date disponible dans la base de données.")
@@ -59,27 +61,30 @@ index = st.slider("Sélectionnez une date", 0, len(dates)-1, 0)
 selected_date = dates[index]
 st.markdown(f"### 📅 Date sélectionnée : {selected_date}")
 
-# --- RÉCUPÉRER LES DONNÉES ---
+# --- CHARGER LES VALEURS ---
 query = "SELECT values FROM data_fibre WHERE date = %s"
 df_values_raw = pd.read_sql(query, conn, params=[selected_date])
 values = df_values_raw["values"][0]
+
+if isinstance(values, str):
+    try:
+        values = json.loads(values)
+    except Exception as e:
+        st.error(f"❌ Erreur lors de la lecture des données : {e}")
+        st.stop()
+
 st.write("✅ Longueur de la liste 'values' :", len(values))
-st.write("📊 Aperçu des valeurs :", values[:10])  # Montre les 10 premières valeurs
+st.write("📊 Aperçu des valeurs :", values[:10])
 
-
-
-# --- RÉCUPÉRER XYZ ---
+# --- CHARGER XYZ ---
 df_xyz = pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
-st.write("✅ Nombre de points XYZ :", df_xyz.shape[0])
-st.subheader("🧪 Débogage - longueurs")
 st.write("✅ Nombre de points XYZ :", len(df_xyz))
-st.write("✅ Nombre de valeurs chargées :", len(values))
 
 if len(values) != len(df_xyz):
     st.error("❌ Erreur : Nombre de valeurs ne correspond pas au nombre de points XYZ.")
     st.stop()
 
-# --- AFFICHAGE PLOTLY ---
+# --- AFFICHAGE ---
 fig = go.Figure(data=[
     go.Scatter3d(
         x=df_xyz["x"],
