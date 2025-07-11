@@ -66,6 +66,9 @@ values = df_values_raw["values"][0]
 st.write("✅ Longueur de la liste 'values' :", len(values))
 st.write("📊 Aperçu des valeurs :", values[:10])  # Montre les 10 premières valeurs
 
+st.subheader("🧪 Débogage - longueurs")
+st.write("✅ Nombre de points XYZ :", len(df_xyz))
+st.write("✅ Nombre de valeurs chargées :", len(z_values))
 
 # --- RÉCUPÉRER XYZ ---
 df_xyz = pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
