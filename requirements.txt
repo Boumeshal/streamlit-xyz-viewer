@@ -1,6 +1,6 @@
 streamlit
+pandas
 plotly
 psycopg2-binary
-pandas
-time
 psutil
+time
