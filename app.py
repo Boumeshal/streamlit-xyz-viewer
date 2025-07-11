@@ -20,7 +20,7 @@ st.title("📊 XYZ Data – Colorisation dynamique par données temporelles")
 
 # --- RECHARGER LES DATES ---
 if st.button("🔄 Recharger les dates disponibles"):
-    st.experimental_rerun()
+    st.rerun()
 
 # --- RÉCUPÉRER LES DATES DISPONIBLES ---
 df_valid_dates = pd.read_sql("SELECT DISTINCT date FROM data_fibre ORDER BY date", conn)
