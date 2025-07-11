@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import psycopg2
 import time
 
-# --- Connexion Neon ---
+# --- Connexion PostgreSQL Neon ---
 conn = psycopg2.connect(
     dbname="neondb",
     user="neondb_owner",
@@ -14,104 +14,163 @@ conn = psycopg2.connect(
     sslmode="require"
 )
 
-# --- Fonction : récupérer tous les identifiants de date (triés décroissant) ---
+# --- Paramètres globaux ---
+COLOR_MIN = 0
+COLOR_MAX = 10000
+MARKER_SIZE = 4
+FONT_SIZE = 14
+LOAD_TIME_LIMIT = 3.0  # secondes
+
+# --- Cache initial pour les XYZ ---
 @st.cache_data
-def get_all_dates():
+def load_xyz():
+    return pd.read_sql("SELECT id, x, y, z FROM xyz_points ORDER BY id", conn)
+
+df_xyz = load_xyz()
+xyz_count = len(df_xyz)
+
+# --- Récupération des dates disponibles ---
+@st.cache_data
+def get_all_date_ids():
     df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date DESC", conn)
     return df
 
-# --- Fonction : récupérer xyz une seule fois ---
-@st.cache_data
-def load_xyz():
-    return pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
+df_date_ids = get_all_date_ids()
+all_ids = df_date_ids["id"].tolist()
+all_dates = df_date_ids["date"].tolist()
 
-# --- Fonction : chargement dynamique en 3s ---
-def load_dates_dynamic(start_index, max_seconds=3.0, max_loaded_dates=50):
-    df_all_dates = get_all_dates()
-    df_xyz = load_xyz()
-    n_points = len(df_xyz)
-
+# --- Chargement dynamique de données selon limite de temps ---
+def load_dates_dynamic(start_index):
     valid_data = {}
-    t_start = time.time()
+    t0 = time.time()
     i = start_index
+    while i < len(all_ids):
+        id_ = all_ids[i]
+        date_str = str(all_dates[i])
 
-    while i < len(df_all_dates):
-        id_, date_ = df_all_dates.iloc[i]
-        query = "SELECT values FROM data_fibre WHERE id = %s"
-        df = pd.read_sql(query, conn, params=[id_])
-        if not df.empty:
-            values = df["values"].iloc[0]
-            if len(values) == n_points:
-                valid_data[date_] = values
+        query = f"SELECT values FROM data_fibre WHERE id = {int(id_)}"
+        df = pd.read_sql(query, conn)
+        values = df["values"].iloc[0]
 
-        if time.time() - t_start >= max_seconds or len(valid_data) >= max_loaded_dates:
-            break
+        if len(values) != xyz_count:
+            i += 1
+            continue
+
+        valid_data[date_str] = values
         i += 1
-
+        if time.time() - t0 >= LOAD_TIME_LIMIT:
+            break
     return valid_data, i
 
-# --- Page config ---
+# --- UI Streamlit ---
 st.set_page_config(layout="wide")
 st.title("📊 XYZ Viewer – Dynamique avec pagination ≤ 3s")
+st.markdown("")
 
-# --- Sessions ---
-if "date_index" not in st.session_state:
-    st.session_state.date_index = 0
+# --- Session ---
 if "data_cache" not in st.session_state:
     st.session_state.data_cache = {}
+    st.session_state.last_loaded_index = 0
 
-# --- Charger XYZ une seule fois ---
-df_xyz = load_xyz()
-n_points = len(df_xyz)
-
-# --- Chargement initial (si cache vide) ---
-if not st.session_state.data_cache:
-    with st.spinner("Chargement initial des données..."):
+# --- Préchargement initial ---
+if len(st.session_state.data_cache) == 0:
+    with st.spinner("Préchargement des données initiales..."):
         initial_data, new_index = load_dates_dynamic(0)
         st.session_state.data_cache.update(initial_data)
-        st.session_state.date_index = new_index
+        st.session_state.last_loaded_index = new_index
 
-# --- Bouton pour pagination (limité à 3s) ---
+# --- Bouton pagination ---
 if st.button("⬇ Charger plus de dates (≤ 3s)"):
-    new_data, new_index = load_dates_dynamic(st.session_state.date_index)
-    st.session_state.data_cache.update(new_data)
-    st.session_state.date_index = new_index
+    with st.spinner("Chargement dynamique..."):
+        new_data, new_index = load_dates_dynamic(st.session_state.last_loaded_index)
+        if len(new_data) == 0:
+            st.error("❌ Aucune date valide chargée en moins de 3s.")
+        else:
+            st.session_state.data_cache.update(new_data)
+            st.session_state.last_loaded_index = new_index
 
-# --- Récupération des dates chargées ---
-dates_loaded = list(st.session_state.data_cache.keys())
-if not dates_loaded:
-    st.error("❌ Aucune date valide chargée en moins de 3s.")
+# --- Données à afficher ---
+valid_dates = list(st.session_state.data_cache.keys())
+
+if len(valid_dates) == 0:
+    st.error("⚠️ Aucune donnée disponible pour affichage.")
     st.stop()
 
-# --- Slider de navigation ---
-index = st.slider("📅 Sélectionner une date", 0, len(dates_loaded) - 1, 0)
-selected_date = dates_loaded[index]
-values = st.session_state.data_cache[selected_date]
+# --- Création des frames ---
+frames = []
+for date in valid_dates:
+    z_vals = st.session_state.data_cache[date]
+    frames.append(go.Frame(
+        data=[go.Scatter3d(
+            x=df_xyz["x"], y=df_xyz["y"], z=df_xyz["z"],
+            mode="markers",
+            marker=dict(
+                size=MARKER_SIZE,
+                color=z_vals,
+                colorscale="Viridis",
+                cmin=COLOR_MIN,
+                cmax=COLOR_MAX,
+                opacity=0.85,
+                colorbar=dict(title=dict(text="Valeur", font=dict(size=FONT_SIZE)))
+            ),
+            hovertemplate="<b>X</b>: %{x:.2f}<br><b>Y</b>: %{y:.2f}<br><b>Z</b>: %{z:.2f}<br><b>Valeur</b>: %{marker.color:.2f}<extra></extra>",
+        )],
+        name=date
+    ))
 
-# --- Vérification ---
-if len(values) != n_points:
-    st.error(f"❌ {len(values)} valeurs ≠ {n_points} XYZ")
-    st.stop()
-
-# --- Affichage ---
-st.markdown(f"### Date sélectionnée : `{selected_date}`")
-st.success(f"✅ {len(values)} valeurs associées aux {n_points} points XYZ")
-
-fig = go.Figure(data=[go.Scatter3d(
+# --- Affichage initial ---
+initial_z = st.session_state.data_cache[valid_dates[0]]
+scatter = go.Scatter3d(
     x=df_xyz["x"], y=df_xyz["y"], z=df_xyz["z"],
-    mode='markers',
+    mode="markers",
     marker=dict(
-        size=3,
-        color=values,
-        colorscale="Turbo",
-        cmin=0,
-        cmax=10000,
-        colorbar=dict(title="Valeur")
+        size=MARKER_SIZE,
+        color=initial_z,
+        colorscale="Viridis",
+        cmin=COLOR_MIN,
+        cmax=COLOR_MAX,
+        opacity=0.85,
+        colorbar=dict(title=dict(text="Valeur", font=dict(size=FONT_SIZE)))
     ),
-    hovertemplate="X: %{x:.2f}<br>Y: %{y:.2f}<br>Z: %{z:.2f}<br>Val: %{marker.color:.2f}<extra></extra>"
-)])
-fig.update_layout(
-    margin=dict(l=0, r=0, t=40, b=0),
-    scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z")
+    hovertemplate="<b>X</b>: %{x:.2f}<br><b>Y</b>: %{y:.2f}<br><b>Z</b>: %{z:.2f}<br><b>Valeur</b>: %{marker.color:.2f}<extra></extra>",
 )
+
+# --- Création de la figure Plotly ---
+fig = go.Figure(
+    data=[scatter],
+    layout=go.Layout(
+        title=dict(
+            text="XYZ Data – Colorisation temporelle dynamique",
+            x=0.5, font=dict(size=FONT_SIZE + 2)
+        ),
+        template="simple_white",
+        scene=dict(
+            xaxis=dict(title="X"),
+            yaxis=dict(title="Y"),
+            zaxis=dict(title="Z"),
+        ),
+        updatemenus=[
+            dict(type="buttons", showactive=False, buttons=[
+                dict(label="▶ Play", method="animate", args=[None, {
+                    "frame": {"duration": 500, "redraw": True}, "fromcurrent": True
+                }]),
+                dict(label="⏸ Pause", method="animate", args=[[None], {
+                    "mode": "immediate", "frame": {"duration": 0, "redraw": False}
+                }])
+            ])
+        ],
+        sliders=[dict(
+            steps=[
+                dict(method="animate", args=[[d], {"mode": "immediate", "frame": {"duration": 0, "redraw": True}}], label=d)
+                for d in valid_dates
+            ],
+            transition={"duration": 0},
+            x=0.1, xanchor="left", y=0, yanchor="top"
+        )],
+        margin=dict(l=0, r=0, t=40, b=0),
+    ),
+    frames=frames
+)
+
+# --- Affichage final ---
 st.plotly_chart(fig, use_container_width=True)
