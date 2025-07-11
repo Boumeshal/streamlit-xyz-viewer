@@ -7,11 +7,12 @@ import psutil
 
 # Connexion Neon
 conn = psycopg2.connect(
-    dbname=st.secrets["db_name"],
-    user=st.secrets["db_user"],
-    password=st.secrets["db_password"],
-    host=st.secrets["db_host"],
-    port=st.secrets["db_port"]
+        dbname="neondb",
+        user="neondb_owner",
+        password="npg_GJ6XsHumk0Yz",
+        host="ep-lucky-base-a22m3jwu-pooler.eu-central-1.aws.neon.tech",
+        port=5432,
+        sslmode="require"
 )
 
 # Initialisation
