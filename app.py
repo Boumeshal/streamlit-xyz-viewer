@@ -13,6 +13,26 @@ conn = psycopg2.connect(
     sslmode="require"
 )
 
+@st.cache_data
+def get_valid_dates(conn):
+    df_dates = pd.read_sql("SELECT DISTINCT date FROM data_fibre ORDER BY date", conn)
+    valid_dates = []
+
+    # Récupérer une seule fois les points XYZ
+    df_xyz = pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
+    n_points = len(df_xyz)
+
+    for date in df_dates["date"]:
+        query = "SELECT values FROM data_fibre WHERE date = %s"
+        df_values_raw = pd.read_sql(query, conn, params=[date])
+        if len(df_values_raw) == 0:
+            continue
+        values = df_values_raw["values"][0]
+        if len(values) == n_points:
+            valid_dates.append(date)
+
+    return valid_dates
+
 st.set_page_config(layout="wide")
 
 # --- TITRE ---
@@ -25,7 +45,10 @@ if st.button("🔄 Recharger les dates disponibles"):
 # --- RÉCUPÉRER LES DATES DISPONIBLES ---
 df_valid_dates = pd.read_sql("SELECT DISTINCT date FROM data_fibre ORDER BY date", conn)
 
-dates = df_valid_dates["date"].tolist()
+
+dates = get_valid_dates(conn)
+st.success(f"✅ {len(dates)} dates valides chargées.")
+
 
 if len(dates) == 0:
     st.error("❌ Aucune date disponible dans la base de données.")
