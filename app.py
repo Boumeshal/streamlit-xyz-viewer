@@ -33,7 +33,7 @@ if "loaded_dates" not in st.session_state:
 
 # --- CHARGER DATES DANS LA LIMITE DES 3s ---
 def load_dates_within_3s():
-    max_duration = 3.0
+    max_duration = 5.0
     start_total = time.time()
     new_loaded = []
 
