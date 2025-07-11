@@ -2,3 +2,5 @@ streamlit
 plotly
 psycopg2-binary
 pandas
+time
+psutil

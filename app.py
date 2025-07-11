@@ -3,8 +3,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import psycopg2
 import time
+import psutil
 
-# --- CONNEXION NEON ---
+# --- Paramètres de connexion à Neon ---
 conn = psycopg2.connect(
     dbname="neondb",
     user="neondb_owner",
@@ -14,79 +15,84 @@ conn = psycopg2.connect(
     sslmode="require"
 )
 
+# --- Surveillance RAM ---
+def memory_saturation_detected(threshold_percent=90):
+    mem = psutil.virtual_memory()
+    used_percent = 100 * (mem.total - mem.available) / mem.total
+    return used_percent > threshold_percent
+
+if memory_saturation_detected():
+    st.cache_data.clear()
+    st.toast("🧹 Cache vidé automatiquement pour préserver la fluidité.")
+
+# --- Cache le chargement de XYZ ---
+@st.cache_data
+def load_xyz():
+    return pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
+
+df_xyz = load_xyz()
+n_points = len(df_xyz)
+
+# --- Liste des dates triées ---
+@st.cache_data
+def get_all_dates():
+    df = pd.read_sql("SELECT id, date, values FROM data_fibre ORDER BY date", conn)
+    return df
+
+df_data = get_all_dates()
+
+# --- Préchargement intelligent ≤ 3 secondes ---
+@st.cache_data
+def preload_valid_dates(max_duration=3.0, start_index=0):
+    valid = []
+    start = time.time()
+    for i in range(start_index, len(df_data)):
+        row = df_data.iloc[i]
+        if time.time() - start > max_duration:
+            break
+        if isinstance(row["values"], list) and len(row["values"]) == n_points:
+            valid.append(row)
+    return valid, i + 1  # nouvelle position pour pagination
+
+# --- Initialisation session ---
+if "valid_rows" not in st.session_state:
+    st.session_state.valid_rows, st.session_state.next_idx = preload_valid_dates()
+
+# --- Page ---
 st.set_page_config(layout="wide")
 st.title("📊 XYZ Viewer – Dynamique avec pagination ≤ 3s")
 
-# --- COORDONNÉES XYZ ---
-df_xyz = pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
-n_points = len(df_xyz)
+# --- Pagination dynamique ---
+if st.button("⬇️ Charger plus de dates (≤ 3s)"):
+    new_rows, st.session_state.next_idx = preload_valid_dates(start_index=st.session_state.next_idx)
+    st.session_state.valid_rows.extend(new_rows)
 
-# --- CHARGER TOUTES LES DATES DISPONIBLES ---
-df_all_dates = pd.read_sql("SELECT date FROM data_fibre ORDER BY date", conn)
-all_dates = df_all_dates["date"].tolist()
+# --- Vérification ---
+if len(st.session_state.valid_rows) == 0:
+    st.error("❌ Aucune date valide chargée en moins de 3s.")
+    st.stop()
 
-# --- INITIALISER SESSION STATE ---
-if "loaded_dates" not in st.session_state:
-    st.session_state.loaded_dates = []
-    st.session_state.values_cache = {}
-    st.session_state.pagination_offset = 0
+# --- Slider ---
+dates = [row["date"] for row in st.session_state.valid_rows]
+selected_idx = st.slider("📅 Sélectionnez une date", 0, len(dates) - 1, 0)
+selected_row = st.session_state.valid_rows[selected_idx]
 
-# --- CHARGER DATES DANS LA LIMITE DES 3s ---
-def load_dates_within_3s():
-    max_duration = 10
-    start_total = time.time()
-    new_loaded = []
+# --- Affichage diagnostic ---
+st.caption(f"Nombre de points XYZ : {n_points}")
+st.caption(f"Nombre de dates préchargées : {len(dates)}")
+st.markdown(f"### 🔎 Date affichée : `{selected_row['date']}`")
 
-    while st.session_state.pagination_offset < len(all_dates):
-        d = all_dates[st.session_state.pagination_offset]
-        q = "SELECT values FROM data_fibre WHERE date = %s"
-        start = time.time()
-        df = pd.read_sql(q, conn, params=[d])
-        elapsed = time.time() - start
-
-        if df.empty or len(df["values"][0]) != n_points:
-            st.session_state.pagination_offset += 1
-            continue
-
-        if (time.time() - start_total) + elapsed > max_duration:
-            break
-
-        st.session_state.values_cache[d] = df["values"][0]
-        new_loaded.append(d)
-        st.session_state.pagination_offset += 1
-
-    return new_loaded
-
-# --- BOUTON POUR CHARGER PLUS ---
-if st.button("⬇ Charger plus de dates (≤ 3s)"):
-    new = load_dates_within_3s()
-    st.session_state.loaded_dates += new
-    st.experimental_rerun()
-
-# --- SI RIEN CHARGÉ, CHARGER AU MOINS UNE FOIS ---
-if not st.session_state.loaded_dates:
-    load_dates_within_3s()
-    if not st.session_state.loaded_dates:
-        st.error("❌ Aucune date valide chargée en moins de 3s.")
-        st.stop()
-
-# --- TRI DES DATES ---
-selected_dates = sorted(st.session_state.loaded_dates)
-selected_index = st.slider("Sélectionnez une date", 0, len(selected_dates)-1, 0)
-selected_date = selected_dates[selected_index]
-st.markdown(f"### 📅 Date sélectionnée : {selected_date}")
-
-values = st.session_state.values_cache[selected_date]
-
-# --- AFFICHAGE PLOTLY ---
+# --- Visualisation Plotly ---
 fig = go.Figure(data=[
     go.Scatter3d(
-        x=df_xyz["x"], y=df_xyz["y"], z=df_xyz["z"],
+        x=df_xyz["x"],
+        y=df_xyz["y"],
+        z=df_xyz["z"],
         mode='markers',
         marker=dict(
-            size=4,
-            color=values,
-            colorscale="Turbo",
+            size=3,
+            color=selected_row["values"],
+            colorscale="Viridis",
             cmin=0,
             cmax=10000,
             colorbar=dict(title="Valeur")
@@ -95,52 +101,9 @@ fig = go.Figure(data=[
     )
 ])
 fig.update_layout(
-    title=dict(text="XYZ Data – Affichage dynamique", x=0.5),
     margin=dict(l=0, r=0, t=40, b=0),
-    scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"),
-    updatemenus=[dict(
-        type="buttons",
-        showactive=False,
-        buttons=[
-            dict(label="▶ Play", method="animate",
-                 args=[None, {"frame": {"duration": 500, "redraw": True}, "fromcurrent": True}]),
-            dict(label="⏸ Pause", method="animate",
-                 args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}])
-        ]
-    )],
-    sliders=[dict(
-        steps=[dict(method="animate",
-                    args=[[str(d)], {"mode": "immediate", "frame": {"duration": 0, "redraw": True}}],
-                    label=str(d)) for d in selected_dates],
-        transition={"duration": 0},
-        x=0.1, xanchor="left", y=0, yanchor="top"
-    )]
+    scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z")
 )
-
-# --- FRAMES ---
-frames = []
-for d in selected_dates:
-    frames.append(go.Frame(
-        data=[
-            go.Scatter3d(
-                x=df_xyz["x"], y=df_xyz["y"], z=df_xyz["z"],
-                mode='markers',
-                marker=dict(
-                    size=4,
-                    color=st.session_state.values_cache[d],
-                    colorscale="Turbo",
-                    cmin=0,
-                    cmax=10000,
-                    opacity=0.85
-                ),
-                hovertemplate="<b>X</b>: %{x:.2f}<br><b>Y</b>: %{y:.2f}<br><b>Z</b>: %{z:.2f}<br><b>Valeur</b>: %{marker.color:.2f}<extra></extra>"
-            )
-        ],
-        name=str(d)
-    ))
-fig.frames = frames
-
 st.plotly_chart(fig, use_container_width=True)
 
-# --- FERMER LA CONNEXION ---
-conn.close()
+# --- Connexion fermée automatiquement par Streamlit Cloud ---
