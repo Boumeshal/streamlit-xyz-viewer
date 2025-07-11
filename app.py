@@ -13,7 +13,7 @@ conn = psycopg2.connect(
     sslmode="require"
 )
 
-@st.cache_data
+
 def get_valid_dates(conn):
     df_dates = pd.read_sql("SELECT DISTINCT date FROM data_fibre ORDER BY date", conn)
     valid_dates = []
