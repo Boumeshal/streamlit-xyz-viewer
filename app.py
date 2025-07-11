@@ -73,7 +73,7 @@ df_xyz = pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
 st.write("✅ Nombre de points XYZ :", df_xyz.shape[0])
 st.subheader("🧪 Débogage - longueurs")
 st.write("✅ Nombre de points XYZ :", len(df_xyz))
-st.write("✅ Nombre de valeurs chargées :", len(z_values))
+st.write("✅ Nombre de valeurs chargées :", len(values))
 
 if len(values) != len(df_xyz):
     st.error("❌ Erreur : Nombre de valeurs ne correspond pas au nombre de points XYZ.")
