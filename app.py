@@ -24,6 +24,7 @@ if st.button("🔄 Recharger les dates disponibles"):
 
 # --- RÉCUPÉRER LES DATES DISPONIBLES ---
 df_valid_dates = pd.read_sql("SELECT DISTINCT date FROM data_fibre ORDER BY date", conn)
+
 dates = df_valid_dates["date"].tolist()
 
 if len(dates) == 0:
@@ -39,9 +40,14 @@ st.markdown(f"### 📅 Date sélectionnée : {selected_date}")
 query = "SELECT values FROM data_fibre WHERE date = %s"
 df_values_raw = pd.read_sql(query, conn, params=[selected_date])
 values = df_values_raw["values"][0]
+st.write("✅ Longueur de la liste 'values' :", len(values))
+st.write("📊 Aperçu des valeurs :", values[:10])  # Montre les 10 premières valeurs
+
 
 # --- RÉCUPÉRER XYZ ---
 df_xyz = pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
+st.write("✅ Nombre de points XYZ :", df_xyz.shape[0])
+
 
 if len(values) != len(df_xyz):
     st.error("❌ Erreur : Nombre de valeurs ne correspond pas au nombre de points XYZ.")
