@@ -3,8 +3,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import psycopg2
 import json
+from datetime import datetime
 
-# --- PARAMÈTRES DE CONNEXION NEON ---
+# --- Connexion à Neon ---
 conn = psycopg2.connect(
     dbname="neondb",
     user="neondb_owner",
@@ -14,89 +15,110 @@ conn = psycopg2.connect(
     sslmode="require"
 )
 
-# --- FONCTION POUR CHARGER LES DATES VALABLES ---
+# --- Débogage des dates valides ---
 def get_valid_dates(conn):
     df_dates = pd.read_sql("SELECT DISTINCT date FROM data_fibre ORDER BY date", conn)
-    valid_dates = []
-
     df_xyz = pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
     n_points = len(df_xyz)
 
-    for date in df_dates["date"]:
+    valid_dates = []
+
+    st.subheader("🔍 Débogage des dates valides")
+    st.write(f"Nombre de points XYZ : {n_points}")
+    st.write(f"Nombre total de dates brutes : {len(df_dates)}")
+
+    for i, date in enumerate(df_dates["date"]):
+        # Supprimer les millisecondes pour comparaison propre
+        date_clean = date.replace(microsecond=0)
+
         query = "SELECT values FROM data_fibre WHERE date = %s"
-        df_values_raw = pd.read_sql(query, conn, params=[date])
-        if len(df_values_raw) == 0:
+        df_values_raw = pd.read_sql(query, conn, params=[date_clean])
+
+        if df_values_raw.empty:
+            st.warning(f"⚠️ Date {date_clean} → Aucune donnée trouvée.")
             continue
 
-        values = df_values_raw["values"][0]
-        if isinstance(values, str):
-            try:
-                values = json.loads(values)
-            except:
-                continue
+        raw = df_values_raw["values"][0]
 
+        # Conversion JSON si nécessaire
+        try:
+            if isinstance(raw, str):
+                values = json.loads(raw)
+            else:
+                values = raw
+        except Exception as e:
+            st.error(f"❌ Date {date_clean} → Erreur de parsing JSON : {e}")
+            continue
+
+        # Comparaison des tailles
         if len(values) == n_points:
-            valid_dates.append(date)
+            valid_dates.append(date_clean)
+        else:
+            st.error(f"🚨 Date {date_clean} → Taille mismatch : {len(values)} valeurs ≠ {n_points} XYZ")
 
     return valid_dates
 
-# --- CONFIG STREAMLIT ---
+# --- PAGE ---
 st.set_page_config(layout="wide")
 st.title("📊 XYZ Data – Colorisation dynamique par données temporelles")
 
-# --- BOUTON DE RECHARGEMENT ---
+# --- Bouton pour recharger ---
 if st.button("🔄 Recharger les dates disponibles"):
     st.rerun()
 
-# --- CHARGER LES DATES DISPONIBLES ---
+# --- Chargement des dates valides ---
 dates = get_valid_dates(conn)
 st.success(f"✅ {len(dates)} dates valides chargées.")
 
-if len(dates) == 0:
+if not dates:
     st.error("❌ Aucune date disponible dans la base de données.")
     st.stop()
 
-# --- SLIDER ---
+# --- Sélection de la date ---
 index = st.slider("Sélectionnez une date", 0, len(dates)-1, 0)
 selected_date = dates[index]
 st.markdown(f"### 📅 Date sélectionnée : {selected_date}")
 
-# --- CHARGER LES VALEURS ---
+# --- Données values ---
 query = "SELECT values FROM data_fibre WHERE date = %s"
 df_values_raw = pd.read_sql(query, conn, params=[selected_date])
-values = df_values_raw["values"][0]
+raw = df_values_raw["values"][0]
 
-if isinstance(values, str):
-    try:
-        values = json.loads(values)
-    except Exception as e:
-        st.error(f"❌ Erreur lors de la lecture des données : {e}")
-        st.stop()
+# --- JSON parsing ---
+try:
+    if isinstance(raw, str):
+        values = json.loads(raw)
+    else:
+        values = raw
+except Exception as e:
+    st.error(f"❌ Erreur de parsing JSON : {e}")
+    st.stop()
 
-st.write("✅ Longueur de la liste 'values' :", len(values))
-st.write("📊 Aperçu des valeurs :", values[:10])
-
-# --- CHARGER XYZ ---
+# --- Points XYZ ---
 df_xyz = pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
-st.write("✅ Nombre de points XYZ :", len(df_xyz))
 
+# --- Affichage des longueurs ---
+st.subheader("🧪 Vérifications de cohérence")
+st.write(f"🟢 Longueur des valeurs : {len(values)}")
+st.write(f"🟢 Nombre de points XYZ : {len(df_xyz)}")
+
+# --- Comparaison stricte ---
 if len(values) != len(df_xyz):
     st.error("❌ Erreur : Nombre de valeurs ne correspond pas au nombre de points XYZ.")
     st.stop()
 
-# --- AFFICHAGE ---
+# --- Affichage Plotly ---
 fig = go.Figure(data=[
     go.Scatter3d(
-        x=df_xyz["x"],
-        y=df_xyz["y"],
-        z=df_xyz["z"],
+        x=df_xyz["x"], y=df_xyz["y"], z=df_xyz["z"],
         mode='markers',
         marker=dict(
             size=4,
             color=values,
-            colorscale="Turbo",
+            colorscale="Viridis",
             cmin=0,
             cmax=10000,
+            opacity=0.85,
             colorbar=dict(title="Valeur")
         ),
         hovertemplate="<b>X</b>: %{x:.2f}<br><b>Y</b>: %{y:.2f}<br><b>Z</b>: %{z:.2f}<br><b>Valeur</b>: %{marker.color:.2f}<extra></extra>"
@@ -112,5 +134,5 @@ fig.update_layout(
 )
 st.plotly_chart(fig, use_container_width=True)
 
-# --- FERMER LA CONNEXION ---
+# --- Fermer la connexion ---
 conn.close()
