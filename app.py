@@ -1,14 +1,15 @@
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import psycopg2
 import time
 
-# --- Nettoyage automatique du cache au premier lancement ---
-if "cache_cleared" not in st.session_state:
+# --- PURGE TOTALE EN FORCE ---
+if not st.session_state.get("cleared"):
     st.cache_data.clear()
     st.cache_resource.clear()
-    st.session_state.cache_cleared = True
+    st.session_state.cleared = True
     st.experimental_rerun()
 
 # --- Connexion à la base Neon ---
