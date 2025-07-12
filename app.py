@@ -5,11 +5,18 @@ import psycopg2
 from sqlalchemy import create_engine
 import time
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION DE LA PAGE ---
+# Doit être la première commande Streamlit
+st.set_page_config(
+    layout="wide",
+    page_title="Visualisation Fibre 3D",
+    page_icon="📊"
+)
+
+# --- CONFIGURATION GLOBALE ---
 CHUNK_SIZE = 50
 
 # --- AVERTISSEMENT DE SÉCURITÉ ---
-# Idéalement, utilisez les secrets de Streamlit (st.secrets) pour plus de sécurité.
 DB_CONFIG = {
     "dbname": "neondb",
     "user": "neondb_owner",
@@ -19,11 +26,7 @@ DB_CONFIG = {
     "sslmode": "require"
 }
 
-# --- CONFIGURATION DE LA PAGE ---
-st.set_page_config(layout="wide")
-st.title("📊 Visualisation 3D Dynamique des données XYZ")
-
-# --- PURGE TOTALE EN FORCE (pour le développement) ---
+# --- PURGE TOTALE EN FORCE ---
 if not st.session_state.get("cleared"):
     st.cache_data.clear()
     st.cache_resource.clear()
@@ -95,11 +98,14 @@ if "loaded_dates" not in st.session_state:
     st.session_state.current_index = len(initial_data) - 1
     st.session_state.backward_index = start_index
 
-# --- PAGINATION ---
-cols = st.columns([1, 6, 1])
 
+# --- BARRE LATÉRALE DE CONTRÔLE (SIDEBAR) ---
+st.sidebar.header("🕹️ Contrôles")
+
+st.sidebar.subheader("Navigation Temporelle")
+cols = st.sidebar.columns(2)
 with cols[0]:
-    if st.button("⟸ Charger plus (avant)"):
+    if st.button("⟸ Charger avant", use_container_width=True):
         end = st.session_state.backward_index
         start = max(0, end - CHUNK_SIZE)
         ids_to_fetch = date_ids[start:end]
@@ -111,58 +117,61 @@ with cols[0]:
                 st.session_state.backward_index = start
                 st.rerun()
         else:
-            st.warning("⛔ Vous avez atteint la date la plus ancienne.")
+            st.sidebar.warning("Première date atteinte.")
 
-with cols[2]:
+with cols[1]:
     if st.session_state.backward_index + len(st.session_state.loaded_dates) >= len(date_ids):
-        st.markdown("<p style='text-align: center; color: green;'>✅<br>Dernière date</p>", unsafe_allow_html=True)
+        st.sidebar.success("Dernière date")
     else:
-        st.button("Charger plus (après) ⟹", disabled=True)
+        st.button("Charger après ⟹", disabled=True, use_container_width=True) # Non implémenté
 
-# --- SÉLECTION DE DATE AVEC st.select_slider ---
+st.sidebar.divider()
+
 if not st.session_state.get("loaded_dates"):
     st.warning("⏳ Aucune donnée chargée.")
     st.stop()
 
 readable_labels = [d["date"].strftime("%d/%m/%Y %H:%M") for d in st.session_state.loaded_dates]
-
-# Sécurisation de l'index pour la valeur par défaut
 current_selection_index = max(0, min(st.session_state.current_index, len(readable_labels) - 1))
 default_selection = readable_labels[current_selection_index]
 
-# Remplacement de st.slider par st.select_slider pour une meilleure compatibilité
-selected_label = st.select_slider(
-    "📅 Sélectionnez une date :",
+st.sidebar.subheader("Sélection de la Date")
+selected_label = st.sidebar.select_slider(
+    "Faites glisser pour choisir une date",
     options=readable_labels,
     value=default_selection,
-    key="date_selector" # Nouvelle clé pour éviter les conflits d'état
+    key="date_selector"
 )
-
-# Retrouver l'index à partir de l'étiquette sélectionnée
 slider_index = readable_labels.index(selected_label)
 st.session_state.current_index = slider_index
 selected_data = st.session_state.loaded_dates[slider_index]
 
-# --- AFFICHAGE DE LA DATE SÉLECTIONNÉE ---
-st.markdown(
-    f"<center><code>{readable_labels[0]}</code> ⟶ <strong style='color:red;'>{selected_label}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
-    unsafe_allow_html=True
-)
 
-# --- VÉRIFICATION DE COHÉRENCE ---
+# --- PANNEAU PRINCIPAL ---
+st.title("📊 Visualisation 3D des Données de Fibre Optique")
+
+# Affichage des dates clés avec st.metric pour un meilleur visuel
+info_cols = st.columns(3)
+info_cols[0].metric("Première date chargée", readable_labels[0])
+info_cols[1].metric("Date sélectionnée", selected_label, "Actuelle")
+info_cols[2].metric("Dernière date chargée", readable_labels[-1])
+
+st.divider()
+
+# VÉRIFICATION DE COHÉRENCE
 values = selected_data["values"]
 if len(values) != n_points:
-    st.error(f"❌ Incohérence des données : {n_points} points XYZ mais {len(values)} valeurs pour cette date.")
+    st.error(f"❌ Incohérence des données : {n_points} points XYZ mais {len(values)} valeurs.")
     st.stop()
 
-# --- AFFICHAGE PLOTLY 3D ---
+# AFFICHAGE PLOTLY 3D
 try:
     fig = go.Figure(data=[
         go.Scatter3d(
             x=df_xyz["x"], y=df_xyz["y"], z=df_xyz["z"],
             mode="markers",
             marker=dict(
-                size=4,
+                size=5,  # Taille des points légèrement augmentée
                 color=values,
                 colorscale="Turbo",
                 cmin=0,
@@ -173,9 +182,16 @@ try:
         )
     ])
     fig.update_layout(
-        margin=dict(l=0, r=0, t=40, b=0),
-        scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z")
+        margin=dict(l=0, r=0, t=20, b=0),
+        scene=dict(
+            xaxis_title="Axe X",
+            yaxis_title="Axe Y",
+            zaxis_title="Axe Z"
+        ),
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
     )
-    st.plotly_chart(fig, use_container_width=True)
+
+    st.plotly_chart(fig, use_container_width=True, height=700) # Hauteur augmentée
+
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
