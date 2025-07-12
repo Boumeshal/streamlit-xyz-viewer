@@ -1,18 +1,10 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import psycopg2
 import time
 
-# --- PURGE TOTALE EN FORCE ---
-if not st.session_state.get("cleared"):
-    st.cache_data.clear()
-    st.cache_resource.clear()
-    st.session_state.cleared = True
-    st.experimental_rerun()
-
-# --- Connexion à la base Neon ---
+# --- Connexion Neon ---
 @st.cache_resource
 def get_conn():
     return psycopg2.connect(
@@ -24,25 +16,31 @@ def get_conn():
         sslmode="require"
     )
 
-# --- Récupération des ID et dates ---
+conn = get_conn()
+
+# --- Récupérer toutes les dates disponibles avec leurs IDs ---
 @st.cache_data(show_spinner="🔄 Chargement des dates...")
-def get_all_date_ids(conn):
+def get_all_date_ids():
     df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date", conn)
     return df["id"].tolist(), df["date"].tolist()
 
-# --- Récupération des points XYZ ---
+date_ids, date_labels = get_all_date_ids()
+
+# --- Récupérer les points XYZ (chargés une seule fois) ---
 @st.cache_data
-def get_xyz(conn):
+def get_xyz():
     return pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
 
-# --- Chargement dynamique des données temporelles ---
-def load_dates_dynamic(conn, date_ids, date_labels, start_idx, direction="forward", max_seconds=3.0):
+df_xyz = get_xyz()
+n_points = len(df_xyz)
+
+# --- Chargement dynamique par ID avec temps maximum ---
+@st.cache_data(ttl=60, max_entries=50)
+def load_dates_dynamic(start_idx, direction="forward", max_seconds=3.0):
     data = []
     start_time = time.time()
     step = 1 if direction == "forward" else -1
     index = start_idx
-    df_xyz = get_xyz(conn)
-    n_points = len(df_xyz)
 
     while 0 <= index < len(date_ids):
         query = "SELECT values FROM data_fibre WHERE id = %s"
@@ -64,15 +62,9 @@ def load_dates_dynamic(conn, date_ids, date_labels, start_idx, direction="forwar
         index = index + 1
     return data, index
 
-# --- Initialisation sécurisée ---
-conn = get_conn()
-date_ids, date_labels = get_all_date_ids(conn)
-df_xyz = get_xyz(conn)
-n_points = len(df_xyz)
-
-# --- Initialisation session ---
+# --- Initialisation ---
 if "loaded_dates" not in st.session_state:
-    initial_data, new_index = load_dates_dynamic(conn, date_ids, date_labels, len(date_ids) - 1, direction="backward")
+    initial_data, new_index = load_dates_dynamic(len(date_ids) - 1, direction="backward")
     st.session_state.loaded_dates = initial_data
     st.session_state.current_index = len(initial_data) - 1
     st.session_state.backward_index = new_index
@@ -81,12 +73,12 @@ if "loaded_dates" not in st.session_state:
 st.set_page_config(layout="wide")
 st.title("📊 Visualisation 3D Dynamique des données XYZ")
 
-# --- Pagination ---
+# --- Boutons de pagination ---
 cols = st.columns([1, 6, 1])
 
 with cols[0]:
     if st.button("⟸ Charger plus (avant)"):
-        new_data, new_idx = load_dates_dynamic(conn, date_ids, date_labels, st.session_state.backward_index, direction="backward")
+        new_data, new_idx = load_dates_dynamic(st.session_state.backward_index, direction="backward")
         if new_data:
             st.session_state.loaded_dates = new_data + st.session_state.loaded_dates
             st.session_state.current_index += len(new_data)
@@ -96,44 +88,27 @@ with cols[0]:
 
 with cols[2]:
     if st.button("Charger plus (après) ⟹"):
-        new_data, new_idx = load_dates_dynamic(conn, date_ids, date_labels, st.session_state.forward_index, direction="forward")
+        new_data, new_idx = load_dates_dynamic(st.session_state.forward_index, direction="forward")
         if new_data:
             st.session_state.loaded_dates += new_data
             st.session_state.forward_index = new_idx
         else:
             st.warning("✅ Vous avez atteint la dernière date disponible.")
 
-# --- Slider avec étiquettes de dates lisibles ---
-labels = [
-    d["date"].strftime("%d/%m/%Y %H:%M") if hasattr(d["date"], "strftime") else str(d["date"])
-    for d in st.session_state.loaded_dates
-]
-
-slider_index = st.slider(
-    "📅 Sélectionnez une date :",
-    min_value=0,
-    max_value=len(labels) - 1,
-    value=st.session_state.current_index,
-    format_func=lambda i: labels[i] if 0 <= i < len(labels) else "?",
-)
-
+# --- Slider ---
+labels = [d["date"] for d in st.session_state.loaded_dates]
+slider_index = st.slider("📅 Sélectionnez une date :", 0, len(labels) - 1, st.session_state.current_index)
 st.session_state.current_index = slider_index
 selected = st.session_state.loaded_dates[slider_index]
 
-# --- Affichage de la date sélectionnée (centrée) ---
-st.markdown(
-    f"<center><code>{labels[0]}</code> ⟶ <strong style='color:red;'>{labels[slider_index]}</strong> ⟶ <code>{labels[-1]}</code></center>",
-    unsafe_allow_html=True
-)
-
-# --- Vérification de cohérence ---
+# --- Données sélectionnées ---
 values = selected["values"]
 
 if len(values) != n_points:
     st.error("❌ Incohérence entre les points XYZ et les données.")
     st.stop()
 
-# --- Affichage Plotly 3D ---
+# --- Affichage Plotly ---
 fig = go.Figure(data=[
     go.Scatter3d(
         x=df_xyz["x"],
