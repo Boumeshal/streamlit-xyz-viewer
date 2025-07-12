@@ -151,23 +151,37 @@ for d in st.session_state.loaded_dates:
         labels.append("Date inconnue")
 
 # Vérification des indices
-max_index = len(labels) - 1
+max_index = max(0, len(labels) - 1)  # Ensure max_index is at least 0
 if st.session_state.current_index > max_index:
     st.session_state.current_index = max_index
 
-slider_index = st.slider(
-    "📅 Sélectionnez une date :",
-    min_value=0,
-    max_value=max_index,
-    value=st.session_state.current_index,
-    format_func=lambda i: labels[i] if 0 <= i < len(labels) else "?",
-)
+# Ensure we have valid slider parameters
+if max_index >= 0 and labels:
+    # Create a safe format function
+    def safe_format_func(i):
+        try:
+            if 0 <= i < len(labels):
+                return labels[i]
+            return "?"
+        except:
+            return "?"
+    
+    slider_index = st.slider(
+        "📅 Sélectionnez une date :",
+        min_value=0,
+        max_value=max_index,
+        value=min(st.session_state.current_index, max_index),
+        format_func=safe_format_func,
+    )
+else:
+    st.error("❌ Aucune donnée disponible pour le slider.")
+    st.stop()
 
 st.session_state.current_index = slider_index
 selected = st.session_state.loaded_dates[slider_index]
 
 # --- Affichage de la date sélectionnée (centrée) ---
-if labels:
+if labels and 0 <= slider_index < len(labels):
     st.markdown(
         f"<center><code>{labels[0]}</code> ⟶ <strong style='color:red;'>{labels[slider_index]}</strong> ⟶ <code>{labels[-1]}</code></center>",
         unsafe_allow_html=True
