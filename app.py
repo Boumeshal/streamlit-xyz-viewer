@@ -5,15 +5,11 @@ import psycopg2
 from sqlalchemy import create_engine
 import time
 
-# --- CONFIGURATION DE LA PAGE ---
-st.set_page_config(
-    layout="wide",
-    page_title="Visualisation Fibre 3D",
-    page_icon="📊"
-)
-
-# --- CONFIGURATION GLOBALE ---
+# --- CONFIGURATION ---
 CHUNK_SIZE = 50
+
+# --- AVERTISSEMENT DE SÉCURITÉ ---
+# Idéalement, utilisez les secrets de Streamlit (st.secrets) pour plus de sécurité.
 DB_CONFIG = {
     "dbname": "neondb",
     "user": "neondb_owner",
@@ -23,7 +19,11 @@ DB_CONFIG = {
     "sslmode": "require"
 }
 
-# --- PURGE TOTALE EN FORCE ---
+# --- CONFIGURATION DE LA PAGE ---
+st.set_page_config(layout="wide")
+st.title("📊 Visualisation 3D Dynamique des données XYZ")
+
+# --- PURGE TOTALE EN FORCE (pour le développement) ---
 if not st.session_state.get("cleared"):
     st.cache_data.clear()
     st.cache_resource.clear()
@@ -95,15 +95,11 @@ if "loaded_dates" not in st.session_state:
     st.session_state.current_index = len(initial_data) - 1
     st.session_state.backward_index = start_index
 
-# --- INTERFACE PRINCIPALE ---
-st.markdown("### 📊 Visualisation 3D des Données de Fibre Optique")
+# --- PAGINATION ---
+cols = st.columns([1, 6, 1])
 
-# --- PANNEAU DE CONTRÔLE HORIZONTAL ---
-controls_cols = st.columns([2, 8, 2]) # 3 colonnes pour la disposition
-
-# Bouton "Charger avant" dans la première colonne
-with controls_cols[0]:
-    if st.button("⟸ Charger avant", use_container_width=True):
+with cols[0]:
+    if st.button("⟸ Charger plus (avant)"):
         end = st.session_state.backward_index
         start = max(0, end - CHUNK_SIZE)
         ids_to_fetch = date_ids[start:end]
@@ -115,48 +111,51 @@ with controls_cols[0]:
                 st.session_state.backward_index = start
                 st.rerun()
         else:
-            st.toast("⛔ Première date atteinte", icon="⛔")
+            st.warning("⛔ Vous avez atteint la date la plus ancienne.")
 
-# Slider de sélection dans la colonne centrale (la plus large)
-with controls_cols[1]:
-    if not st.session_state.get("loaded_dates"):
-        st.warning("⏳ Aucune donnée chargée.")
-        st.stop()
-
-    readable_labels = [d["date"].strftime("%d/%m/%Y %H:%M") for d in st.session_state.loaded_dates]
-    current_selection_index = max(0, min(st.session_state.current_index, len(readable_labels) - 1))
-    default_selection = readable_labels[current_selection_index]
-
-    selected_label = st.select_slider(
-        "📅 Sélectionnez une date",
-        options=readable_labels,
-        value=default_selection,
-        key="date_selector",
-        label_visibility="collapsed" # Cache le label pour gagner de la place
-    )
-    slider_index = readable_labels.index(selected_label)
-    st.session_state.current_index = slider_index
-    selected_data = st.session_state.loaded_dates[slider_index]
-
-# Statut "Dernière date" dans la troisième colonne
-with controls_cols[2]:
+with cols[2]:
     if st.session_state.backward_index + len(st.session_state.loaded_dates) >= len(date_ids):
-        st.success("✅ Dernière date")
+        st.markdown("<p style='text-align: center; color: green;'>✅<br>Dernière date</p>", unsafe_allow_html=True)
+    else:
+        st.button("Charger plus (après) ⟹", disabled=True)
 
-# --- AFFICHAGE COMPACT DE LA DATE ---
+# --- SÉLECTION DE DATE AVEC st.select_slider ---
+if not st.session_state.get("loaded_dates"):
+    st.warning("⏳ Aucune donnée chargée.")
+    st.stop()
+
+readable_labels = [d["date"].strftime("%d/%m/%Y %H:%M") for d in st.session_state.loaded_dates]
+
+# Sécurisation de l'index pour la valeur par défaut
+current_selection_index = max(0, min(st.session_state.current_index, len(readable_labels) - 1))
+default_selection = readable_labels[current_selection_index]
+
+# Remplacement de st.slider par st.select_slider pour une meilleure compatibilité
+selected_label = st.select_slider(
+    "📅 Sélectionnez une date :",
+    options=readable_labels,
+    value=default_selection,
+    key="date_selector" # Nouvelle clé pour éviter les conflits d'état
+)
+
+# Retrouver l'index à partir de l'étiquette sélectionnée
+slider_index = readable_labels.index(selected_label)
+st.session_state.current_index = slider_index
+selected_data = st.session_state.loaded_dates[slider_index]
+
+# --- AFFICHAGE DE LA DATE SÉLECTIONNÉE ---
 st.markdown(
-    f"<p style='text-align:center; font-size: 0.9em; color: grey;'>Plage chargée : {readable_labels[0]}  —  <strong style='color: #FF4B4B;'>{selected_label}</strong>  —  {readable_labels[-1]}</p>",
+    f"<center><code>{readable_labels[0]}</code> ⟶ <strong style='color:red;'>{selected_label}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
     unsafe_allow_html=True
 )
 
-st.divider()
-
-# --- GRAPHIQUE 3D MIS EN AVANT ---
+# --- VÉRIFICATION DE COHÉRENCE ---
 values = selected_data["values"]
 if len(values) != n_points:
-    st.error(f"❌ Incohérence des données : {n_points} points XYZ mais {len(values)} valeurs.")
+    st.error(f"❌ Incohérence des données : {n_points} points XYZ mais {len(values)} valeurs pour cette date.")
     st.stop()
 
+# --- AFFICHAGE PLOTLY 3D ---
 try:
     fig = go.Figure(data=[
         go.Scatter3d(
@@ -168,23 +167,15 @@ try:
                 colorscale="Turbo",
                 cmin=0,
                 cmax=10000,
-                colorbar=dict(title="Valeur", thickness=15, len=0.75)
+                colorbar=dict(title="Valeur")
             ),
             hovertemplate="<b>X</b>: %{x:.2f}<br><b>Y</b>: %{y:.2f}<br><b>Z</b>: %{z:.2f}<br><b>Valeur</b>: %{marker.color:.2f}<extra></extra>"
         )
     ])
-    # Optimisation de l'espace : suppression des marges et ajustement de la scène
     fig.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0), # Aucune marge
-        scene=dict(
-            xaxis_title="X",
-            yaxis_title="Y",
-            zaxis_title="Z",
-            aspectmode='data' # Assure que les proportions sont respectées
-        )
+        margin=dict(l=0, r=0, t=40, b=0),
+        scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z")
     )
-
-    st.plotly_chart(fig, use_container_width=True, height=650)
-
+    st.plotly_chart(fig, use_container_width=True)
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
