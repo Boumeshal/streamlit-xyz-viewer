@@ -10,7 +10,7 @@ if not st.session_state.get("cleared"):
     st.cache_data.clear()
     st.cache_resource.clear()
     st.session_state.cleared = True
-    st.experimental_rerun()
+    st.rerun()
 
 # --- Connexion à la base Neon ---
 @st.cache_resource
