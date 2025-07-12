@@ -4,7 +4,14 @@ import plotly.graph_objects as go
 import psycopg2
 import time
 
-# --- Connexion Neon ---
+# --- Nettoyage automatique du cache au premier lancement ---
+if "cache_cleared" not in st.session_state:
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.session_state.cache_cleared = True
+    st.experimental_rerun()
+
+# --- Connexion à la base Neon ---
 @st.cache_resource
 def get_conn():
     return psycopg2.connect(
@@ -16,27 +23,18 @@ def get_conn():
         sslmode="require"
     )
 
-# --- Récupération des données avec vidage automatique du cache en cas d'erreur ---
-def safe_init():
-    try:
-        conn = get_conn()
-        date_ids, date_labels = get_all_date_ids(conn)
-        return conn, date_ids, date_labels
-    except Exception as e:
-        st.warning("🔁 Problème détecté. Vidage automatique du cache...")
-        st.cache_data.clear()
-        st.cache_resource.clear()
-        st.experimental_rerun()
-
+# --- Récupération des ID et dates ---
 @st.cache_data(show_spinner="🔄 Chargement des dates...")
 def get_all_date_ids(conn):
     df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date", conn)
     return df["id"].tolist(), df["date"].tolist()
 
+# --- Récupération des points XYZ ---
 @st.cache_data
 def get_xyz(conn):
     return pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
 
+# --- Chargement dynamique des données temporelles ---
 def load_dates_dynamic(conn, date_ids, date_labels, start_idx, direction="forward", max_seconds=3.0):
     data = []
     start_time = time.time()
@@ -66,11 +64,12 @@ def load_dates_dynamic(conn, date_ids, date_labels, start_idx, direction="forwar
     return data, index
 
 # --- Initialisation sécurisée ---
-conn, date_ids, date_labels = safe_init()
+conn = get_conn()
+date_ids, date_labels = get_all_date_ids(conn)
 df_xyz = get_xyz(conn)
 n_points = len(df_xyz)
 
-# --- Session init ---
+# --- Initialisation session ---
 if "loaded_dates" not in st.session_state:
     initial_data, new_index = load_dates_dynamic(conn, date_ids, date_labels, len(date_ids) - 1, direction="backward")
     st.session_state.loaded_dates = initial_data
@@ -103,7 +102,7 @@ with cols[2]:
         else:
             st.warning("✅ Vous avez atteint la dernière date disponible.")
 
-# --- Slider ---
+# --- Slider avec étiquettes de dates lisibles ---
 labels = [
     d["date"].strftime("%d/%m/%Y %H:%M") if hasattr(d["date"], "strftime") else str(d["date"])
     for d in st.session_state.loaded_dates
@@ -120,19 +119,20 @@ slider_index = st.slider(
 st.session_state.current_index = slider_index
 selected = st.session_state.loaded_dates[slider_index]
 
-# --- Date sélectionnée ---
+# --- Affichage de la date sélectionnée (centrée) ---
 st.markdown(
     f"<center><code>{labels[0]}</code> ⟶ <strong style='color:red;'>{labels[slider_index]}</strong> ⟶ <code>{labels[-1]}</code></center>",
     unsafe_allow_html=True
 )
 
-# --- Affichage des données ---
+# --- Vérification de cohérence ---
 values = selected["values"]
 
 if len(values) != n_points:
     st.error("❌ Incohérence entre les points XYZ et les données.")
     st.stop()
 
+# --- Affichage Plotly 3D ---
 fig = go.Figure(data=[
     go.Scatter3d(
         x=df_xyz["x"],
