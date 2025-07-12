@@ -96,8 +96,6 @@ if "loaded_dates" not in st.session_state:
     st.session_state.backward_index = start_index
 
 # --- PAGINATION ---
-# *** CORRECTION FINALE ET VÉRIFIÉE ***
-# st.columns requiert un argument pour spécifier la disposition.
 cols = st.columns([1, 6, 1])
 
 with cols[0]:
@@ -119,35 +117,35 @@ with cols[2]:
     if st.session_state.backward_index + len(st.session_state.loaded_dates) >= len(date_ids):
         st.markdown("<p style='text-align: center; color: green;'>✅<br>Dernière date</p>", unsafe_allow_html=True)
     else:
-        # L'implémentation de ce bouton est optionnelle
-        if st.button("Charger plus (après) ⟹"):
-            st.warning("Fonctionnalité non implémentée.")
+        st.button("Charger plus (après) ⟹", disabled=True)
 
-
-# --- SLIDER DE SÉLECTION DE DATE ---
+# --- SÉLECTION DE DATE AVEC st.select_slider ---
 if not st.session_state.get("loaded_dates"):
     st.warning("⏳ Aucune donnée chargée.")
     st.stop()
 
 readable_labels = [d["date"].strftime("%d/%m/%Y %H:%M") for d in st.session_state.loaded_dates]
-max_slider_value = len(readable_labels) - 1
-current_slider_index = max(0, min(st.session_state.current_index, max_slider_value))
 
-# Utilisation de 'format' pour la compatibilité avec les anciennes versions de Streamlit
-slider_index = st.slider(
+# Sécurisation de l'index pour la valeur par défaut
+current_selection_index = max(0, min(st.session_state.current_index, len(readable_labels) - 1))
+default_selection = readable_labels[current_selection_index]
+
+# Remplacement de st.slider par st.select_slider pour une meilleure compatibilité
+selected_label = st.select_slider(
     "📅 Sélectionnez une date :",
-    min_value=0,
-    max_value=max_slider_value,
-    value=current_slider_index,
-    format=lambda i: readable_labels[i] if 0 <= i < len(readable_labels) else '?',
-    key="date_slider"
+    options=readable_labels,
+    value=default_selection,
+    key="date_selector" # Nouvelle clé pour éviter les conflits d'état
 )
+
+# Retrouver l'index à partir de l'étiquette sélectionnée
+slider_index = readable_labels.index(selected_label)
 st.session_state.current_index = slider_index
 selected_data = st.session_state.loaded_dates[slider_index]
 
 # --- AFFICHAGE DE LA DATE SÉLECTIONNÉE ---
 st.markdown(
-    f"<center><code>{readable_labels[0]}</code> ⟶ <strong style='color:red;'>{readable_labels[slider_index]}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
+    f"<center><code>{readable_labels[0]}</code> ⟶ <strong style='color:red;'>{selected_label}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
     unsafe_allow_html=True
 )
 
