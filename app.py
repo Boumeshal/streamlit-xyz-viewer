@@ -33,7 +33,6 @@ if not st.session_state.get("cleared"):
 # --- CONNEXION À LA BASE DE DONNÉES ---
 @st.cache_resource
 def get_engine():
-    """Crée un moteur SQLAlchemy."""
     try:
         db_url = (
             f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@"
@@ -79,7 +78,7 @@ try:
     df_xyz = get_xyz()
     n_points = len(df_xyz)
     if not date_ids or df_xyz.empty:
-        st.error("❌ Aucune donnée de base trouvée (dates ou points XYZ).")
+        st.error("❌ Aucune donnée de base trouvée.")
         st.stop()
 except Exception as e:
     st.error(f"❌ Erreur critique lors de la connexion initiale: {e}")
@@ -97,8 +96,10 @@ if "loaded_dates" not in st.session_state:
     st.session_state.backward_index = start_index
 
 # --- PAGINATION ---
-# CORRIGÉ : Utilisation de st.columns avec un argument de spécification
+# *** CORRECTION APPLIQUÉE ICI ***
+# st.columns requiert un argument pour spécifier la disposition.
 cols = st.columns()
+
 with cols:
     if st.button("⟸ Charger plus (avant)"):
         end = st.session_state.backward_index
@@ -113,23 +114,24 @@ with cols:
                 st.rerun()
         else:
             st.warning("⛔ Vous avez atteint la date la plus ancienne.")
+
 with cols:
     if st.session_state.backward_index + len(st.session_state.loaded_dates) >= len(date_ids):
         st.markdown("<p style='text-align: right; color: green;'>✅<br>Dernière date</p>", unsafe_allow_html=True)
     else:
-        # Le bouton "après" n'est pas nécessaire pour le moment.
-        pass
+        st.button("Charger plus (après) ⟹", disabled=True)
+
 
 # --- SLIDER DE SÉLECTION DE DATE ---
 if not st.session_state.get("loaded_dates"):
-    st.warning("⏳ Aucune donnée chargée. Veuillez patienter ou recharger.")
+    st.warning("⏳ Aucune donnée chargée.")
     st.stop()
 
 readable_labels = [d["date"].strftime("%d/%m/%Y %H:%M") for d in st.session_state.loaded_dates]
 max_slider_value = len(readable_labels) - 1
 current_slider_index = max(0, min(st.session_state.current_index, max_slider_value))
 
-# CORRIGÉ : Utilisation de 'format' au lieu de 'format_func' pour la compatibilité
+# Utilisation de 'format' pour la compatibilité avec les anciennes versions de Streamlit
 slider_index = st.slider(
     "📅 Sélectionnez une date :",
     min_value=0,
@@ -142,7 +144,6 @@ st.session_state.current_index = slider_index
 selected_data = st.session_state.loaded_dates[slider_index]
 
 # --- AFFICHAGE DE LA DATE SÉLECTIONNÉE ---
-# CORRIGÉ : Affichage correct des étiquettes de début et de fin.
 st.markdown(
     f"<center><code>{readable_labels}</code> ⟶ <strong style='color:red;'>{readable_labels[slider_index]}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
     unsafe_allow_html=True
@@ -178,5 +179,3 @@ try:
     st.plotly_chart(fig, use_container_width=True)
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
-
-# CORRIGÉ : Assurez-vous qu'il n'y a AUCUN caractère après cette ligne.
