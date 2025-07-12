@@ -16,26 +16,31 @@ def get_conn():
         sslmode="require"
     )
 
-conn = get_conn()
+# --- Fonction robuste de récupération avec gestion automatique du cache en cas d'erreur ---
+def safe_init():
+    try:
+        conn = get_conn()
+        date_ids, date_labels = get_all_date_ids(conn)
+        return conn, date_ids, date_labels
+    except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+        st.warning("🔁 Problème de connexion détecté. Vidage automatique du cache...")
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.experimental_rerun()
 
 # --- Récupérer toutes les dates disponibles avec leurs IDs ---
 @st.cache_data(show_spinner="🔄 Chargement des dates...")
-def get_all_date_ids():
+def get_all_date_ids(conn):
     df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date", conn)
     return df["id"].tolist(), df["date"].tolist()
 
-date_ids, date_labels = get_all_date_ids()
-
 # --- Récupérer les points XYZ (chargés une seule fois) ---
 @st.cache_data
-def get_xyz():
+def get_xyz(conn):
     return pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
 
-df_xyz = get_xyz()
-n_points = len(df_xyz)
-
 # --- Chargement dynamique par ID avec temps maximum ---
-def load_dates_dynamic(conn, start_idx, direction="forward", max_seconds=3.0):
+def load_dates_dynamic(conn, date_ids, date_labels, start_idx, direction="forward", max_seconds=3.0):
     data = []
     start_time = time.time()
     step = 1 if direction == "forward" else -1
@@ -46,7 +51,8 @@ def load_dates_dynamic(conn, start_idx, direction="forward", max_seconds=3.0):
         df = pd.read_sql(query, conn, params=[date_ids[index]])
         if not df.empty:
             values = df["values"].iloc[0]
-            if len(values) == n_points:
+            df_xyz = get_xyz(conn)
+            if len(values) == len(df_xyz):
                 data.append({
                     "id": date_ids[index],
                     "date": date_labels[index],
@@ -61,9 +67,14 @@ def load_dates_dynamic(conn, start_idx, direction="forward", max_seconds=3.0):
         index = index + 1
     return data, index
 
+# --- Sécuriser initialisation avec fallback automatique ---
+conn, date_ids, date_labels = safe_init()
+df_xyz = get_xyz(conn)
+n_points = len(df_xyz)
+
 # --- Initialisation ---
 if "loaded_dates" not in st.session_state:
-    initial_data, new_index = load_dates_dynamic(conn, len(date_ids) - 1, direction="backward")
+    initial_data, new_index = load_dates_dynamic(conn, date_ids, date_labels, len(date_ids) - 1, direction="backward")
     st.session_state.loaded_dates = initial_data
     st.session_state.current_index = len(initial_data) - 1
     st.session_state.backward_index = new_index
@@ -77,7 +88,7 @@ cols = st.columns([1, 6, 1])
 
 with cols[0]:
     if st.button("⟸ Charger plus (avant)"):
-        new_data, new_idx = load_dates_dynamic(conn, st.session_state.backward_index, direction="backward")
+        new_data, new_idx = load_dates_dynamic(conn, date_ids, date_labels, st.session_state.backward_index, direction="backward")
         if new_data:
             st.session_state.loaded_dates = new_data + st.session_state.loaded_dates
             st.session_state.current_index += len(new_data)
@@ -87,7 +98,7 @@ with cols[0]:
 
 with cols[2]:
     if st.button("Charger plus (après) ⟹"):
-        new_data, new_idx = load_dates_dynamic(conn, st.session_state.forward_index, direction="forward")
+        new_data, new_idx = load_dates_dynamic(conn, date_ids, date_labels, st.session_state.forward_index, direction="forward")
         if new_data:
             st.session_state.loaded_dates += new_data
             st.session_state.forward_index = new_idx
