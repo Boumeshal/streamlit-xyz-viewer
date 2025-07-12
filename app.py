@@ -101,8 +101,8 @@ if "loaded_dates" not in st.session_state:
     st.session_state.backward_index = start_index
 
 # --- PAGINATION ---
-cols = st.columns([1, 6, 1])
-with cols[0]:
+cols = st.columns()
+with cols:
     if st.button("⟸ Charger plus (avant)"):
         end = st.session_state.backward_index
         start = max(0, end - CHUNK_SIZE)
@@ -116,23 +116,18 @@ with cols[0]:
                 st.rerun()
         else:
             st.warning("⛔ Vous avez atteint la date la plus ancienne.")
-with cols[2]:
+with cols:
     if st.session_state.backward_index + len(st.session_state.loaded_dates) >= len(date_ids):
         st.markdown("<p style='text-align: right; color: green;'>✅<br>Dernière date</p>", unsafe_allow_html=True)
     else:
         st.button("Charger plus (après) ⟹", disabled=True)
 
 # --- SLIDER DE SÉLECTION DE DATE ---
-
-# *** CORRECTIF APPLIQUÉ ICI ***
-# On vérifie explicitement que la liste des données chargées n'est pas vide AVANT de tenter de créer le slider.
 if not st.session_state.get("loaded_dates"):
     st.warning("⏳ Aucune donnée chargée. Veuillez patienter ou recharger.")
-    st.stop()  # Arrête l'exécution du script pour éviter l'erreur
+    st.stop()
 
 readable_labels = [d["date"].strftime("%d/%m/%Y %H:%M") for d in st.session_state.loaded_dates]
-
-# Sécurisation des indices pour le slider
 max_slider_value = len(readable_labels) - 1
 current_slider_index = max(0, min(st.session_state.current_index, max_slider_value))
 
@@ -149,7 +144,7 @@ selected_data = st.session_state.loaded_dates[slider_index]
 
 # --- AFFICHAGE DE LA DATE SÉLECTIONNÉE ---
 st.markdown(
-    f"<center><code>{readable_labels[0]}</code> ⟶ <strong style='color:red;'>{readable_labels[slider_index]}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
+    f"<center><code>{readable_labels}</code> ⟶ <strong style='color:red;'>{readable_labels[slider_index]}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
     unsafe_allow_html=True
 )
 
@@ -182,4 +177,4 @@ try:
     )
     st.plotly_chart(fig, use_container_width=True)
 except Exception as e:
-    st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")```
+    st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
