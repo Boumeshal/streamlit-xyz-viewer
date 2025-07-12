@@ -97,7 +97,13 @@ with cols[2]:
 
 # --- Slider ---
 labels = [d["date"] for d in st.session_state.loaded_dates]
-slider_index = st.slider("📅 Sélectionnez une date :", 0, len(labels) - 1, st.session_state.current_index)
+slider_index = st.slider(
+    "📅 Sélectionnez une date :",
+    min_value=0,
+    max_value=len(labels) - 1,
+    value=st.session_state.current_index,
+    format_func=lambda i: labels[i]  # Affiche la date au lieu de l'index
+)
 st.session_state.current_index = slider_index
 selected = st.session_state.loaded_dates[slider_index]
 
