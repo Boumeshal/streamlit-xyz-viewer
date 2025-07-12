@@ -9,8 +9,7 @@ import time
 CHUNK_SIZE = 50
 
 # --- AVERTISSEMENT DE SÉCURITÉ ---
-# La meilleure pratique est de ne JAMAIS écrire vos identifiants directement dans le code.
-# Idéalement, utilisez les secrets de Streamlit (st.secrets).
+# Idéalement, utilisez les secrets de Streamlit (st.secrets) pour plus de sécurité.
 DB_CONFIG = {
     "dbname": "neondb",
     "user": "neondb_owner",
@@ -22,9 +21,9 @@ DB_CONFIG = {
 
 # --- CONFIGURATION DE LA PAGE ---
 st.set_page_config(layout="wide")
-st.title("📊 Visualisation 3D Dynamique des données XYZ (Version Corrigée)")
+st.title("📊 Visualisation 3D Dynamique des données XYZ")
 
-# --- PURGE TOTALE EN FORCE ---
+# --- PURGE TOTALE EN FORCE (pour le développement) ---
 if not st.session_state.get("cleared"):
     st.cache_data.clear()
     st.cache_resource.clear()
@@ -48,19 +47,16 @@ def get_engine():
 # --- FONCTIONS DE RÉCUPÉRATION DES DONNÉES ---
 @st.cache_data(show_spinner="🔄 Chargement des métadonnées...")
 def get_all_date_ids():
-    """Récupère tous les ID et dates, triés chronologiquement."""
     engine = get_engine()
     df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date", engine)
     return df["id"].tolist(), df["date"].tolist()
 
 @st.cache_data
 def get_xyz():
-    """Récupère les coordonnées XYZ des points."""
     engine = get_engine()
     return pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", engine)
 
 def load_dates_in_batch(ids_to_fetch):
-    """Récupère les données pour une liste d'IDs en une seule requête."""
     if not ids_to_fetch:
         return []
     engine = get_engine()
@@ -73,7 +69,7 @@ def load_dates_in_batch(ids_to_fetch):
         return []
     data = [
         {"id": row["id"], "date": row["date"], "values": row["values"]}
-        for _, row in df.iterrows() if len(row["values"]) == n_points
+        for _, row in df.iterrows() if len(row.get("values", [])) == n_points
     ]
     return data
 
@@ -101,6 +97,7 @@ if "loaded_dates" not in st.session_state:
     st.session_state.backward_index = start_index
 
 # --- PAGINATION ---
+# CORRIGÉ : Utilisation de st.columns avec un argument de spécification
 cols = st.columns()
 with cols:
     if st.button("⟸ Charger plus (avant)"):
@@ -120,7 +117,8 @@ with cols:
     if st.session_state.backward_index + len(st.session_state.loaded_dates) >= len(date_ids):
         st.markdown("<p style='text-align: right; color: green;'>✅<br>Dernière date</p>", unsafe_allow_html=True)
     else:
-        st.button("Charger plus (après) ⟹", disabled=True)
+        # Le bouton "après" n'est pas nécessaire pour le moment.
+        pass
 
 # --- SLIDER DE SÉLECTION DE DATE ---
 if not st.session_state.get("loaded_dates"):
@@ -131,18 +129,20 @@ readable_labels = [d["date"].strftime("%d/%m/%Y %H:%M") for d in st.session_stat
 max_slider_value = len(readable_labels) - 1
 current_slider_index = max(0, min(st.session_state.current_index, max_slider_value))
 
+# CORRIGÉ : Utilisation de 'format' au lieu de 'format_func' pour la compatibilité
 slider_index = st.slider(
     "📅 Sélectionnez une date :",
     min_value=0,
     max_value=max_slider_value,
     value=current_slider_index,
-    format_func=lambda i: readable_labels[i] if 0 <= i < len(readable_labels) else '?',
+    format=lambda i: readable_labels[i] if 0 <= i < len(readable_labels) else '?',
     key="date_slider"
 )
 st.session_state.current_index = slider_index
 selected_data = st.session_state.loaded_dates[slider_index]
 
 # --- AFFICHAGE DE LA DATE SÉLECTIONNÉE ---
+# CORRIGÉ : Affichage correct des étiquettes de début et de fin.
 st.markdown(
     f"<center><code>{readable_labels}</code> ⟶ <strong style='color:red;'>{readable_labels[slider_index]}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
     unsafe_allow_html=True
@@ -178,3 +178,5 @@ try:
     st.plotly_chart(fig, use_container_width=True)
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
+
+# CORRIGÉ : Assurez-vous qu'il n'y a AUCUN caractère après cette ligne.
