@@ -95,17 +95,26 @@ with cols[2]:
         else:
             st.warning("✅ Vous avez atteint la dernière date disponible.")
 
-# --- Slider ---
-labels = [d["date"] for d in st.session_state.loaded_dates]
+# --- Slider --- (amélioré avec affichage de la date sélectionnée)
+labels = [d["date"].strftime("%d/%m/%Y %H:%M") if hasattr(d["date"], "strftime") else str(d["date"]) for d in st.session_state.loaded_dates]
+
 slider_index = st.slider(
     "📅 Sélectionnez une date :",
     min_value=0,
     max_value=len(labels) - 1,
     value=st.session_state.current_index,
-    format_func=lambda i: labels[i]  # Affiche la date au lieu de l'index
+    format_func=lambda i: labels[i] if 0 <= i < len(labels) else "?",
 )
+
 st.session_state.current_index = slider_index
 selected = st.session_state.loaded_dates[slider_index]
+
+# --- Affichage de la date sélectionnée (optionnel mais clair)
+st.markdown(
+    f"<center><code>{labels[0]}</code> ⟶ <strong style='color:red;'>{labels[slider_index]}</strong> ⟶ <code>{labels[-1]}</code></center>",
+    unsafe_allow_html=True
+)
+
 
 # --- Données sélectionnées ---
 values = selected["values"]
