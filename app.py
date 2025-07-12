@@ -187,4 +187,4 @@ try:
     st.plotly_chart(fig, use_container_width=True, height=650)
 
 except Exception as e:
-    st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")```
+    st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
