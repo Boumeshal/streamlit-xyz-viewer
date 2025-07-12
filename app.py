@@ -26,8 +26,8 @@ def get_conn():
 
 # --- Récupération des ID et dates ---
 @st.cache_data(show_spinner="🔄 Chargement des dates...")
-def get_all_date_ids(conn):
-    df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date", conn)
+def get_all_date_ids(_conn):
+    df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date", _conn)
     return df["id"].tolist(), df["date"].tolist()
 
 # --- Récupération des points XYZ ---
