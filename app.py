@@ -96,11 +96,11 @@ if "loaded_dates" not in st.session_state:
     st.session_state.backward_index = start_index
 
 # --- PAGINATION ---
-# *** CORRECTION APPLIQUÉE ICI ***
+# *** CORRECTION FINALE ET VÉRIFIÉE ***
 # st.columns requiert un argument pour spécifier la disposition.
-cols = st.columns()
+cols = st.columns([1, 6, 1])
 
-with cols:
+with cols[0]:
     if st.button("⟸ Charger plus (avant)"):
         end = st.session_state.backward_index
         start = max(0, end - CHUNK_SIZE)
@@ -115,11 +115,13 @@ with cols:
         else:
             st.warning("⛔ Vous avez atteint la date la plus ancienne.")
 
-with cols:
+with cols[2]:
     if st.session_state.backward_index + len(st.session_state.loaded_dates) >= len(date_ids):
-        st.markdown("<p style='text-align: right; color: green;'>✅<br>Dernière date</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: green;'>✅<br>Dernière date</p>", unsafe_allow_html=True)
     else:
-        st.button("Charger plus (après) ⟹", disabled=True)
+        # L'implémentation de ce bouton est optionnelle
+        if st.button("Charger plus (après) ⟹"):
+            st.warning("Fonctionnalité non implémentée.")
 
 
 # --- SLIDER DE SÉLECTION DE DATE ---
@@ -145,7 +147,7 @@ selected_data = st.session_state.loaded_dates[slider_index]
 
 # --- AFFICHAGE DE LA DATE SÉLECTIONNÉE ---
 st.markdown(
-    f"<center><code>{readable_labels}</code> ⟶ <strong style='color:red;'>{readable_labels[slider_index]}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
+    f"<center><code>{readable_labels[0]}</code> ⟶ <strong style='color:red;'>{readable_labels[slider_index]}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
     unsafe_allow_html=True
 )
 
