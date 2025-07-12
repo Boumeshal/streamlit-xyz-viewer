@@ -16,43 +16,41 @@ def get_conn():
         sslmode="require"
     )
 
-# --- Fonction robuste de récupération avec gestion automatique du cache en cas d'erreur ---
+# --- Récupération des données avec vidage automatique du cache en cas d'erreur ---
 def safe_init():
     try:
         conn = get_conn()
         date_ids, date_labels = get_all_date_ids(conn)
         return conn, date_ids, date_labels
-    except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
-        st.warning("🔁 Problème de connexion détecté. Vidage automatique du cache...")
+    except Exception as e:
+        st.warning("🔁 Problème détecté. Vidage automatique du cache...")
         st.cache_data.clear()
         st.cache_resource.clear()
         st.experimental_rerun()
 
-# --- Récupérer toutes les dates disponibles avec leurs IDs ---
 @st.cache_data(show_spinner="🔄 Chargement des dates...")
 def get_all_date_ids(conn):
     df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date", conn)
     return df["id"].tolist(), df["date"].tolist()
 
-# --- Récupérer les points XYZ (chargés une seule fois) ---
 @st.cache_data
 def get_xyz(conn):
     return pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", conn)
 
-# --- Chargement dynamique par ID avec temps maximum ---
 def load_dates_dynamic(conn, date_ids, date_labels, start_idx, direction="forward", max_seconds=3.0):
     data = []
     start_time = time.time()
     step = 1 if direction == "forward" else -1
     index = start_idx
+    df_xyz = get_xyz(conn)
+    n_points = len(df_xyz)
 
     while 0 <= index < len(date_ids):
         query = "SELECT values FROM data_fibre WHERE id = %s"
         df = pd.read_sql(query, conn, params=[date_ids[index]])
         if not df.empty:
             values = df["values"].iloc[0]
-            df_xyz = get_xyz(conn)
-            if len(values) == len(df_xyz):
+            if len(values) == n_points:
                 data.append({
                     "id": date_ids[index],
                     "date": date_labels[index],
@@ -67,12 +65,12 @@ def load_dates_dynamic(conn, date_ids, date_labels, start_idx, direction="forwar
         index = index + 1
     return data, index
 
-# --- Sécuriser initialisation avec fallback automatique ---
+# --- Initialisation sécurisée ---
 conn, date_ids, date_labels = safe_init()
 df_xyz = get_xyz(conn)
 n_points = len(df_xyz)
 
-# --- Initialisation ---
+# --- Session init ---
 if "loaded_dates" not in st.session_state:
     initial_data, new_index = load_dates_dynamic(conn, date_ids, date_labels, len(date_ids) - 1, direction="backward")
     st.session_state.loaded_dates = initial_data
@@ -83,7 +81,7 @@ if "loaded_dates" not in st.session_state:
 st.set_page_config(layout="wide")
 st.title("📊 Visualisation 3D Dynamique des données XYZ")
 
-# --- Boutons de pagination ---
+# --- Pagination ---
 cols = st.columns([1, 6, 1])
 
 with cols[0]:
@@ -105,7 +103,7 @@ with cols[2]:
         else:
             st.warning("✅ Vous avez atteint la dernière date disponible.")
 
-# --- Slider avec étiquettes de dates lisibles ---
+# --- Slider ---
 labels = [
     d["date"].strftime("%d/%m/%Y %H:%M") if hasattr(d["date"], "strftime") else str(d["date"])
     for d in st.session_state.loaded_dates
@@ -122,20 +120,19 @@ slider_index = st.slider(
 st.session_state.current_index = slider_index
 selected = st.session_state.loaded_dates[slider_index]
 
-# --- Affichage de la date sélectionnée (centrée) ---
+# --- Date sélectionnée ---
 st.markdown(
     f"<center><code>{labels[0]}</code> ⟶ <strong style='color:red;'>{labels[slider_index]}</strong> ⟶ <code>{labels[-1]}</code></center>",
     unsafe_allow_html=True
 )
 
-# --- Données sélectionnées ---
+# --- Affichage des données ---
 values = selected["values"]
 
 if len(values) != n_points:
     st.error("❌ Incohérence entre les points XYZ et les données.")
     st.stop()
 
-# --- Affichage Plotly ---
 fig = go.Figure(data=[
     go.Scatter3d(
         x=df_xyz["x"],
