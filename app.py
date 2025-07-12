@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import psycopg2
+from sqlalchemy import create_engine
 import time
 
 # --- PURGE TOTALE EN FORCE ---
@@ -23,24 +24,33 @@ def get_conn():
         sslmode="require"
     )
 
+@st.cache_resource
+def get_engine():
+    return create_engine(
+        "postgresql://neondb_owner:npg_GJ6XsHumk0Yz@ep-lucky-base-a22m3jwu-pooler.eu-central-1.aws.neon.tech:5432/neondb?sslmode=require"
+    )
+
 # --- Récupération des ID et dates ---
 @st.cache_data(show_spinner="🔄 Chargement des dates...")
-def get_all_date_ids(_conn):  # Underscore prefix to avoid hashing
-    df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date", _conn)
+def get_all_date_ids():
+    engine = get_engine()
+    df = pd.read_sql("SELECT id, date FROM data_fibre ORDER BY date", engine)
     return df["id"].tolist(), df["date"].tolist()
 
 # --- Récupération des points XYZ ---
 @st.cache_data
-def get_xyz(_conn):  # Underscore prefix to avoid hashing
-    return pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", _conn)
+def get_xyz():
+    engine = get_engine()
+    return pd.read_sql("SELECT x, y, z FROM xyz_points ORDER BY id", engine)
 
 # --- Chargement dynamique des données temporelles ---
-def load_dates_dynamic(conn, date_ids, date_labels, start_idx, direction="forward", max_seconds=3.0):
+def load_dates_dynamic(date_ids, date_labels, start_idx, direction="forward", max_seconds=3.0):
     data = []
     start_time = time.time()
     step = 1 if direction == "forward" else -1
     index = start_idx
-    df_xyz = get_xyz(conn)
+    conn = get_conn()  # Get connection inside function
+    df_xyz = get_xyz()
     n_points = len(df_xyz)
 
     while 0 <= index < len(date_ids):
@@ -74,9 +84,8 @@ st.title("📊 Visualisation 3D Dynamique des données XYZ")
 
 # --- Initialisation sécurisée ---
 try:
-    conn = get_conn()
-    date_ids, date_labels = get_all_date_ids(conn)
-    df_xyz = get_xyz(conn)
+    date_ids, date_labels = get_all_date_ids()
+    df_xyz = get_xyz()
     n_points = len(df_xyz)
     
     # Vérification que nous avons des données
@@ -91,7 +100,7 @@ except Exception as e:
 # --- Initialisation session ---
 if "loaded_dates" not in st.session_state:
     try:
-        initial_data, new_index = load_dates_dynamic(conn, date_ids, date_labels, len(date_ids) - 1, direction="backward")
+        initial_data, new_index = load_dates_dynamic(date_ids, date_labels, len(date_ids) - 1, direction="backward")
         if not initial_data:
             st.error("❌ Impossible de charger les données initiales.")
             st.stop()
@@ -110,7 +119,7 @@ cols = st.columns([1, 6, 1])
 with cols[0]:
     if st.button("⟸ Charger plus (avant)"):
         try:
-            new_data, new_idx = load_dates_dynamic(conn, date_ids, date_labels, st.session_state.backward_index, direction="backward")
+            new_data, new_idx = load_dates_dynamic(date_ids, date_labels, st.session_state.backward_index, direction="backward")
             if new_data:
                 st.session_state.loaded_dates = new_data + st.session_state.loaded_dates
                 st.session_state.current_index += len(new_data)
@@ -124,7 +133,7 @@ with cols[0]:
 with cols[2]:
     if st.button("Charger plus (après) ⟹"):
         try:
-            new_data, new_idx = load_dates_dynamic(conn, date_ids, date_labels, st.session_state.forward_index, direction="forward")
+            new_data, new_idx = load_dates_dynamic(date_ids, date_labels, st.session_state.forward_index, direction="forward")
             if new_data:
                 st.session_state.loaded_dates += new_data
                 st.session_state.forward_index = new_idx
@@ -156,22 +165,26 @@ if st.session_state.current_index > max_index:
     st.session_state.current_index = max_index
 
 # Ensure we have valid slider parameters
-if max_index >= 0 and labels:
+if max_index >= 0 and labels and len(st.session_state.loaded_dates) > 0:
     # Create a safe format function
     def safe_format_func(i):
         try:
-            if 0 <= i < len(labels):
-                return labels[i]
+            if isinstance(i, (int, float)) and 0 <= int(i) < len(labels):
+                return labels[int(i)]
             return "?"
         except:
             return "?"
+    
+    # Ensure current_index is within bounds
+    safe_current_index = max(0, min(st.session_state.current_index, max_index))
     
     slider_index = st.slider(
         "📅 Sélectionnez une date :",
         min_value=0,
         max_value=max_index,
-        value=min(st.session_state.current_index, max_index),
+        value=safe_current_index,
         format_func=safe_format_func,
+        key="date_slider"
     )
 else:
     st.error("❌ Aucune donnée disponible pour le slider.")
