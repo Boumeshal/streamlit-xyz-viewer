@@ -35,8 +35,7 @@ df_xyz = get_xyz()
 n_points = len(df_xyz)
 
 # --- Chargement dynamique par ID avec temps maximum ---
-@st.cache_data(ttl=60, max_entries=50)
-def load_dates_dynamic(start_idx, direction="forward", max_seconds=3.0):
+def load_dates_dynamic(conn, start_idx, direction="forward", max_seconds=3.0):
     data = []
     start_time = time.time()
     step = 1 if direction == "forward" else -1
@@ -64,7 +63,7 @@ def load_dates_dynamic(start_idx, direction="forward", max_seconds=3.0):
 
 # --- Initialisation ---
 if "loaded_dates" not in st.session_state:
-    initial_data, new_index = load_dates_dynamic(len(date_ids) - 1, direction="backward")
+    initial_data, new_index = load_dates_dynamic(conn, len(date_ids) - 1, direction="backward")
     st.session_state.loaded_dates = initial_data
     st.session_state.current_index = len(initial_data) - 1
     st.session_state.backward_index = new_index
@@ -78,7 +77,7 @@ cols = st.columns([1, 6, 1])
 
 with cols[0]:
     if st.button("⟸ Charger plus (avant)"):
-        new_data, new_idx = load_dates_dynamic(st.session_state.backward_index, direction="backward")
+        new_data, new_idx = load_dates_dynamic(conn, st.session_state.backward_index, direction="backward")
         if new_data:
             st.session_state.loaded_dates = new_data + st.session_state.loaded_dates
             st.session_state.current_index += len(new_data)
@@ -88,7 +87,7 @@ with cols[0]:
 
 with cols[2]:
     if st.button("Charger plus (après) ⟹"):
-        new_data, new_idx = load_dates_dynamic(st.session_state.forward_index, direction="forward")
+        new_data, new_idx = load_dates_dynamic(conn, st.session_state.forward_index, direction="forward")
         if new_data:
             st.session_state.loaded_dates += new_data
             st.session_state.forward_index = new_idx
