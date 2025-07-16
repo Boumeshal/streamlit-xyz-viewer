@@ -179,3 +179,25 @@ try:
     st.plotly_chart(fig, use_container_width=True)
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
+
+    # --- AFFICHAGE PLOTLY 2D scatter (valeurs en fonction de l'ordre des points) ---
+try:
+    fig2d = go.Figure(data=[
+        go.Scatter(
+            x=list(range(len(values))),
+            y=values,
+            mode="markers+lines",
+            marker=dict(color="blue"),
+            line=dict(shape="linear"),
+            name="Values Scatter"
+        )
+    ])
+    fig2d.update_layout(
+        title="📈 Scatter plot 2D des valeurs (ordre des points)",
+        xaxis_title="Index du point",
+        yaxis_title="Valeur",
+        margin=dict(l=40, r=40, t=40, b=40)
+    )
+    st.plotly_chart(fig2d, use_container_width=True)
+except Exception as e:
+    st.error(f"❌ Erreur lors de la création du graphique 2D scatter : {e}")
