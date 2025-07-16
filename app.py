@@ -205,7 +205,7 @@ try:
         )
     ])
     fig2d.update_layout(
-        title="📈 ScatterGL plot 2D ({selected_label})",
+        title=f"📈 ScatterGL plot 2D ({selected_label})",
         xaxis_title="Index du point",
         yaxis_title="Valeur",
         yaxis=dict(range=[0, 10000]),
