@@ -198,7 +198,7 @@ try:
             ),
             hovertemplate=(
             f"<b>Date</b>: {selected_label}<br>"
-            "<b>Index</b>: %{x}<br>"
+            "<b>Point</b>: %{x}<br>"
             "<b>Valeur</b>: %{y:.2f}<extra></extra>"
         ),
             name="Values ScatterGL"
