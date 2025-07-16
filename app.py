@@ -9,7 +9,6 @@ import time
 CHUNK_SIZE = 50
 
 # --- AVERTISSEMENT DE SÉCURITÉ ---
-# Idéalement, utilisez les secrets de Streamlit (st.secrets) pour plus de sécurité.
 DB_CONFIG = {
     "dbname": "neondb",
     "user": "neondb_owner",
@@ -122,31 +121,28 @@ with cols[2]:
     else:
         st.button("Charger plus (après) ⟹", disabled=True)
 
-# --- SÉLECTION DE DATE AVEC st.select_slider ---
+# --- SÉLECTION DE DATE ---
 if not st.session_state.get("loaded_dates"):
     st.warning("⏳ Aucune donnée chargée.")
     st.stop()
 
 readable_labels = [d["date"].strftime("%d/%m/%Y %H:%M") for d in st.session_state.loaded_dates]
 
-# Sécurisation de l'index pour la valeur par défaut
 current_selection_index = max(0, min(st.session_state.current_index, len(readable_labels) - 1))
 default_selection = readable_labels[current_selection_index]
 
-# Remplacement de st.slider par st.select_slider pour une meilleure compatibilité
 selected_label = st.select_slider(
     "📅 Sélectionnez une date :",
     options=readable_labels,
     value=default_selection,
-    key="date_selector"  # Nouvelle clé pour éviter les conflits d'état
+    key="date_selector"
 )
 
-# Retrouver l'index à partir de l'étiquette sélectionnée
 slider_index = readable_labels.index(selected_label)
 st.session_state.current_index = slider_index
 selected_data = st.session_state.loaded_dates[slider_index]
 
-# --- AFFICHAGE DE LA DATE SÉLECTIONNÉE ---
+# --- AFFICHAGE DE LA DATE ---
 st.markdown(
     f"<center><code>{readable_labels[0]}</code> ⟶ <strong style='color:red;'>{selected_label}</strong> ⟶ <code>{readable_labels[-1]}</code></center>",
     unsafe_allow_html=True
@@ -181,21 +177,10 @@ try:
         scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z")
     )
     selected_points = st.plotly_chart(fig, use_container_width=True)
-
-    # Récupérer la sélection d'un point 3D
-    clicked = st.session_state.get("last_clicked_point", None)
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
 
-# --- CAPTURE DE L'ÉVÉNEMENT DE CLIC SUR LE POINT 3D ---
-# Streamlit ne supporte pas nativement la récupération d'événements click sur plotly charts.
-# Solution : Utiliser st.plotly_chart avec `use_container_width=True` mais il faut un callback JS custom (non natif).
-# Alternative : Utiliser plotly_events via streamlit-plotly-events, mais ici on fait un truc simple en mode "sélection manuelle".
-
-# On propose un sélecteur manuel synchronisé avec le graphique :
-selected_point_index = st.session_state.selected_point_index
-
-# --- AFFICHAGE PLOTLY 2D scattergl coloré ---
+# --- AFFICHAGE 2D ScatterGL ---
 try:
     fig2d = go.Figure(data=[
         go.Scattergl(
@@ -231,10 +216,8 @@ try:
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique 2D scattergl : {e}")
 
-# --- SÉLECTION D'UN POINT POUR L'ANALYSE TEMPORALE ---
-# Mise à jour automatique si clic sur 3D sinon via slider manuel
+# --- ANALYSE TEMPORELLE D’UN POINT ---
 st.subheader("📈 Analyse temporelle d’un point")
-
 col1, col2 = st.columns([4, 1])
 
 with col1:
@@ -249,31 +232,32 @@ with col2:
         st.session_state.selected_point_index = st.session_state.get("last_clicked_point", point_index)
         st.rerun()
 
-# Mise à jour de l'index du point sélectionné dans l'état
 st.session_state.selected_point_index = point_index
 
-# --- EXTRACTION DES VALEURS POUR CE POINT DANS TOUTES LES DATES CHARGÉES ---
+# --- EXTRACTION DES VALEURS TEMPORELLES ---
 times = [entry["date"] for entry in st.session_state.loaded_dates]
 point_values = [entry["values"][st.session_state.selected_point_index] for entry in st.session_state.loaded_dates]
 
-# --- AFFICHAGE DU GRAPHIQUE TIME SERIES ---
+# --- AFFICHAGE GRAPHIQUE TEMPOREL ---
 try:
-    timeseries_fig = go.Figure()
-    timeseries_fig.add_trace(go.Scatter(
-        x=times,
-        y=point_values,
-        mode="lines+markers",
-        line=dict(color="royalblue"),
-        marker=dict(size=6),
-        name=f"Valeurs du point {st.session_state.selected_point_index}"
-    ))
-    timeseries_fig.update_layout(
-        title=f"📊 Évolution temporelle du point {st.session_state.selected_point_index}",
-        xaxis_title="Temps",
+    fig_time = go.Figure(data=[
+        go.Scatter(
+            x=times,
+            y=point_values,
+            mode="lines+markers",
+            line=dict(color="royalblue", width=2),
+            marker=dict(size=6),
+            name="Valeur au point sélectionné",
+            hovertemplate="<b>Date</b>: %{x}<br><b>Valeur</b>: %{y:.2f}<extra></extra>"
+        )
+    ])
+    fig_time.update_layout(
+        title=f"📊 Évolution temporelle du point #{st.session_state.selected_point_index}",
+        xaxis_title="Date",
         yaxis_title="Valeur",
-        yaxis=dict(autorange=True),
+        yaxis=dict(range=[0, 10000]),
         margin=dict(l=40, r=40, t=40, b=40)
     )
-    st.plotly_chart(timeseries_fig, use_container_width=True)
+    st.plotly_chart(fig_time, use_container_width=True)
 except Exception as e:
-    st.error(f"❌ Erreur lors de la génération du graphique temporel : {e}")
+    st.error(f"❌ Erreur lors de la création du graphique temporel : {e}")
