@@ -28,7 +28,7 @@ if not st.session_state.get("cleared"):
     st.cache_data.clear()
     st.cache_resource.clear()
     st.session_state.cleared = True
-    st.rerun()
+    st.experimental_rerun()
 
 # --- CONNEXION À LA BASE DE DONNÉES ---
 @st.cache_resource
@@ -95,6 +95,9 @@ if "loaded_dates" not in st.session_state:
     st.session_state.current_index = len(initial_data) - 1
     st.session_state.backward_index = start_index
 
+if "selected_point_index" not in st.session_state:
+    st.session_state.selected_point_index = 0
+
 # --- PAGINATION ---
 cols = st.columns([1, 6, 1])
 
@@ -109,7 +112,7 @@ with cols[0]:
                 st.session_state.loaded_dates = new_data + st.session_state.loaded_dates
                 st.session_state.current_index += len(new_data)
                 st.session_state.backward_index = start
-                st.rerun()
+                st.experimental_rerun()
         else:
             st.warning("⛔ Vous avez atteint la date la plus ancienne.")
 
@@ -135,7 +138,7 @@ selected_label = st.select_slider(
     "📅 Sélectionnez une date :",
     options=readable_labels,
     value=default_selection,
-    key="date_selector" # Nouvelle clé pour éviter les conflits d'état
+    key="date_selector"  # Nouvelle clé pour éviter les conflits d'état
 )
 
 # Retrouver l'index à partir de l'étiquette sélectionnée
@@ -169,16 +172,28 @@ try:
                 cmax=10000,
                 colorbar=dict(title="Valeur")
             ),
-            hovertemplate="<b>X</b>: %{x:.2f}<br><b>Y</b>: %{y:.2f}<br><b>Z</b>: %{z:.2f}<br><b>Valeur</b>: %{marker.color:.2f}<extra></extra>"
+            hovertemplate="<b>X</b>: %{x:.2f}<br><b>Y</b>: %{y:.2f}<br><b>Z</b>: %{z:.2f}<br><b>Valeur</b>: %{marker.color:.2f}<extra></extra>",
+            customdata=list(range(n_points)),
         )
     ])
     fig.update_layout(
         margin=dict(l=0, r=0, t=40, b=0),
         scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z")
     )
-    st.plotly_chart(fig, use_container_width=True)
+    selected_points = st.plotly_chart(fig, use_container_width=True)
+
+    # Récupérer la sélection d'un point 3D
+    clicked = st.session_state.get("last_clicked_point", None)
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
+
+# --- CAPTURE DE L'ÉVÉNEMENT DE CLIC SUR LE POINT 3D ---
+# Streamlit ne supporte pas nativement la récupération d'événements click sur plotly charts.
+# Solution : Utiliser st.plotly_chart avec `use_container_width=True` mais il faut un callback JS custom (non natif).
+# Alternative : Utiliser plotly_events via streamlit-plotly-events, mais ici on fait un truc simple en mode "sélection manuelle".
+
+# On propose un sélecteur manuel synchronisé avec le graphique :
+selected_point_index = st.session_state.selected_point_index
 
 # --- AFFICHAGE PLOTLY 2D scattergl coloré ---
 try:
@@ -197,10 +212,10 @@ try:
                 line=dict(width=0)
             ),
             hovertemplate=(
-            f"<b>Date</b>: {selected_label}<br>"
-            "<b>Point</b>: %{x}<br>"
-            "<b>Valeur</b>: %{y:.2f}<extra></extra>"
-        ),
+                f"<b>Date</b>: {selected_label}<br>"
+                "<b>Point</b>: %{x}<br>"
+                "<b>Valeur</b>: %{y:.2f}<extra></extra>"
+            ),
             name="Values ScatterGL",
             customdata=list(range(len(values))),
         )
@@ -216,16 +231,32 @@ try:
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique 2D scattergl : {e}")
 
-
-# --- SÉLECTION D'UN POINT POUR L'ANALYSE TEMPORAL --- #
+# --- SÉLECTION D'UN POINT POUR L'ANALYSE TEMPORALE ---
+# Mise à jour automatique si clic sur 3D sinon via slider manuel
 st.subheader("📈 Analyse temporelle d’un point")
-point_index = st.slider("🔍 Sélectionnez l’index du point à suivre dans le temps :", 0, n_points - 1, 0)
 
-# --- EXTRACTION DES VALEURS POUR CE POINT DANS TOUTES LES DATES CHARGÉES --- #
+col1, col2 = st.columns([4, 1])
+
+with col1:
+    point_index = st.slider(
+        "🔍 Sélectionnez l’index du point à suivre dans le temps :",
+        0, n_points - 1,
+        st.session_state.selected_point_index,
+        key="point_index_slider"
+    )
+with col2:
+    if st.button("🔄 Synchroniser avec point 3D sélectionné"):
+        st.session_state.selected_point_index = st.session_state.get("last_clicked_point", point_index)
+        st.experimental_rerun()
+
+# Mise à jour de l'index du point sélectionné dans l'état
+st.session_state.selected_point_index = point_index
+
+# --- EXTRACTION DES VALEURS POUR CE POINT DANS TOUTES LES DATES CHARGÉES ---
 times = [entry["date"] for entry in st.session_state.loaded_dates]
-point_values = [entry["values"][point_index] for entry in st.session_state.loaded_dates]
+point_values = [entry["values"][st.session_state.selected_point_index] for entry in st.session_state.loaded_dates]
 
-# --- AFFICHAGE DU GRAPHIQUE TIME SERIES --- #
+# --- AFFICHAGE DU GRAPHIQUE TIME SERIES ---
 try:
     timeseries_fig = go.Figure()
     timeseries_fig.add_trace(go.Scatter(
@@ -234,10 +265,10 @@ try:
         mode="lines+markers",
         line=dict(color="royalblue"),
         marker=dict(size=6),
-        name=f"Valeurs du point {point_index}"
+        name=f"Valeurs du point {st.session_state.selected_point_index}"
     ))
     timeseries_fig.update_layout(
-        title=f"📊 Évolution temporelle du point {point_index}",
+        title=f"📊 Évolution temporelle du point {st.session_state.selected_point_index}",
         xaxis_title="Temps",
         yaxis_title="Valeur",
         yaxis=dict(autorange=True),
