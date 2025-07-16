@@ -28,7 +28,7 @@ if not st.session_state.get("cleared"):
     st.cache_data.clear()
     st.cache_resource.clear()
     st.session_state.cleared = True
-    st.experimental_run()
+    st.rerun()
 
 # --- CONNEXION À LA BASE DE DONNÉES ---
 @st.cache_resource
@@ -112,7 +112,7 @@ with cols[0]:
                 st.session_state.loaded_dates = new_data + st.session_state.loaded_dates
                 st.session_state.current_index += len(new_data)
                 st.session_state.backward_index = start
-                st.experimental_run()
+                st.rerun()
         else:
             st.warning("⛔ Vous avez atteint la date la plus ancienne.")
 
@@ -247,7 +247,7 @@ with col1:
 with col2:
     if st.button("🔄 Synchroniser avec point 3D sélectionné"):
         st.session_state.selected_point_index = st.session_state.get("last_clicked_point", point_index)
-        st.experimental_run()
+        st.rerun()
 
 # Mise à jour de l'index du point sélectionné dans l'état
 st.session_state.selected_point_index = point_index
