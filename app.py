@@ -239,7 +239,7 @@ try:
         title=f"📊 Évolution temporelle du point {point_index}",
         xaxis_title="Temps",
         yaxis_title="Valeur",
-        yaxis=dict(range=[0, 10000]),
+        yaxis=dict(autorange=True),
         margin=dict(l=40, r=40, t=40, b=40)
     )
     st.plotly_chart(timeseries_fig, use_container_width=True)
