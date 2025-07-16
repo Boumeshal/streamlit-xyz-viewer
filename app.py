@@ -196,11 +196,16 @@ try:
                 colorbar=dict(title="Valeur"),
                 line=dict(width=0)
             ),
+            hovertemplate=(
+            f"<b>Date</b>: {selected_label}<br>"
+            "<b>Index</b>: %{x}<br>"
+            "<b>Valeur</b>: %{y:.2f}<extra></extra>"
+        ),
             name="Values ScatterGL"
         )
     ])
     fig2d.update_layout(
-        title="📈 ScatterGL plot 2D des valeurs colorées (ordre des points)",
+        title="📈 ScatterGL plot 2D ({selected_label})",
         xaxis_title="Index du point",
         yaxis_title="Valeur",
         yaxis=dict(range=[0, 10000]),
