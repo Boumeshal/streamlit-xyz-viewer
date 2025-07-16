@@ -112,7 +112,7 @@ with cols[0]:
                 st.session_state.loaded_dates = new_data + st.session_state.loaded_dates
                 st.session_state.current_index += len(new_data)
                 st.session_state.backward_index = start
-                st.experimental_rerun()
+                st.experimental_run()
         else:
             st.warning("⛔ Vous avez atteint la date la plus ancienne.")
 
