@@ -214,3 +214,34 @@ try:
     st.plotly_chart(fig2d, use_container_width=True)
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique 2D scattergl : {e}")
+
+
+# --- SÉLECTION D'UN POINT POUR L'ANALYSE TEMPORAL --- #
+st.subheader("📈 Analyse temporelle d’un point")
+point_index = st.slider("🔍 Sélectionnez l’index du point à suivre dans le temps :", 0, n_points - 1, 0)
+
+# --- EXTRACTION DES VALEURS POUR CE POINT DANS TOUTES LES DATES CHARGÉES --- #
+times = [entry["date"] for entry in st.session_state.loaded_dates]
+point_values = [entry["values"][point_index] for entry in st.session_state.loaded_dates]
+
+# --- AFFICHAGE DU GRAPHIQUE TIME SERIES --- #
+try:
+    timeseries_fig = go.Figure()
+    timeseries_fig.add_trace(go.Scatter(
+        x=times,
+        y=point_values,
+        mode="lines+markers",
+        line=dict(color="royalblue"),
+        marker=dict(size=6),
+        name=f"Valeurs du point {point_index}"
+    ))
+    timeseries_fig.update_layout(
+        title=f"📊 Évolution temporelle du point {point_index}",
+        xaxis_title="Temps",
+        yaxis_title="Valeur",
+        yaxis=dict(range=[0, 10000]),
+        margin=dict(l=40, r=40, t=40, b=40)
+    )
+    st.plotly_chart(timeseries_fig, use_container_width=True)
+except Exception as e:
+    st.error(f"❌ Erreur lors de la génération du graphique temporel : {e}")
