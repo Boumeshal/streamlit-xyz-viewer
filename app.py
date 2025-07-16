@@ -28,7 +28,7 @@ if not st.session_state.get("cleared"):
     st.cache_data.clear()
     st.cache_resource.clear()
     st.session_state.cleared = True
-    st.experimental_rerun()
+    st.experimental_run()
 
 # --- CONNEXION À LA BASE DE DONNÉES ---
 @st.cache_resource
@@ -247,7 +247,7 @@ with col1:
 with col2:
     if st.button("🔄 Synchroniser avec point 3D sélectionné"):
         st.session_state.selected_point_index = st.session_state.get("last_clicked_point", point_index)
-        st.experimental_rerun()
+        st.experimental_run()
 
 # Mise à jour de l'index du point sélectionné dans l'état
 st.session_state.selected_point_index = point_index
