@@ -180,23 +180,30 @@ try:
 except Exception as e:
     st.error(f"❌ Erreur lors de la création du graphique Plotly : {e}")
 
-# --- AFFICHAGE PLOTLY 2D scattergl (valeurs en fonction de l'ordre des points) ---
+# --- AFFICHAGE PLOTLY 2D scattergl coloré ---
 try:
     fig2d = go.Figure(data=[
         go.Scattergl(
             x=list(range(len(values))),
             y=values,
-            mode="markers+lines",
-            marker=dict(color="blue"),
-            line=dict(shape="linear"),
+            mode="markers",
+            marker=dict(
+                size=6,
+                color=values,
+                colorscale="Turbo",
+                cmin=0,
+                cmax=10000,
+                colorbar=dict(title="Valeur"),
+                line=dict(width=0)
+            ),
             name="Values ScatterGL"
         )
     ])
     fig2d.update_layout(
-        title="📈 ScatterGL plot 2D des valeurs (ordre des points)",
+        title="📈 ScatterGL plot 2D des valeurs colorées (ordre des points)",
         xaxis_title="Index du point",
         yaxis_title="Valeur",
-        yaxis=dict(range=[0, 15000]),
+        yaxis=dict(range=[0, 10000]),
         margin=dict(l=40, r=40, t=40, b=40)
     )
     st.plotly_chart(fig2d, use_container_width=True)
