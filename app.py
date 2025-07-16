@@ -196,7 +196,7 @@ try:
         title="📈 ScatterGL plot 2D des valeurs (ordre des points)",
         xaxis_title="Index du point",
         yaxis_title="Valeur",
-        yaxis=dict(range=[0, 10000]),
+        yaxis=dict(range=[0, 15000]),
         margin=dict(l=40, r=40, t=40, b=40)
     )
     st.plotly_chart(fig2d, use_container_width=True)
